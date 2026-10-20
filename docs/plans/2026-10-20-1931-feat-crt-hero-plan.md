@@ -15,7 +15,7 @@ execution: code
 - **Objective:** A recruiter or hiring manager who opens Shivanand Shukla's portfolio link stops, smiles at a CRT-headed character that looks back at them, clicks, and within a few seconds is being talked to by "Shiv" and offered four clear next steps.
 - **Means:** A single-viewport interactive hero built as a state machine (idle, booting, conversation, restart), with a 3D monitor head over a 2D photographic body plate.
 - **Product authority:** Shivanand Shukla (owner). This plan covers the hero only. The work, builds, about, resume and writing destinations are later areas, not active scope.
-- **Open blockers:** Four Resolve Before Planning questions (Outstanding Questions below). Asset gaps do not block; placeholders are allowed per R27.
+- **Open blockers:** None. Asset gaps do not block; placeholders are allowed per R27.
 
 ---
 
@@ -35,7 +35,10 @@ Recruiters give a portfolio link under a minute. A conventional PM portfolio (he
 - **The brief overrides the Stitch design system wherever they disagree.** Stitch (`reference/stitch`) is a loose layout reference only. Its sharp-corner, no-pill rule, grid, multiplayer cursors, floating tiles and "STAGE_01 // READY"-style metadata labels are not adopted. The brief's pills, round restart button and Inter Tight win. Governs R13, R14, R22.
 - **3D monitor over a 2D body plate is the working hypothesis, not a settled choice.** The prototype step decides procedural CRT vs GLB vs a fallback approach before planning commits. Governs R23–R26.
 - **Dialogue is data.** Every line, pill, nudge and reply lives in one content file, and the conversation is a graph of nodes. Governs R18, R19.
-- **Timings are named constants in one file.** Governs R32.
+- **Timings are named constants in one file.** Governs R34.
+- **The JS budget applies to the initial bundle.** First paint stays under about 150KB gzip and the lazy 3D chunk is budgeted separately at about 250KB gzip. Governs R35. (session-settled: user-approved — chosen over a hard 250KB cap on all JS: that cap would force hand-written three.js without R3F/drei.)
+- **Reduced motion keeps the 3D head, frozen.** The static image is only the no-WebGL fallback. Governs R30, R31. (session-settled: user-approved — chosen over the brief's static-image swap: keeps the same character and the screen face in both modes.)
+- **Progress means topics explored.** Governs R20. (session-settled: user-approved — chosen over dialogue depth and a decorative bar: it keeps working as real topic states are added.)
 
 ### Actors
 
@@ -74,7 +77,7 @@ Recruiters give a portfolio link under a minute. A conventional PM portfolio (he
 - R17. A top-centre nav shows Work · Builds · About · Writing as placeholder links.
 - R18. Bottom-left has a round black restart button that reverses the transition back to State 1 and resets conversation progress.
 - R19. Bottom-right has a vertical sound toggle (on / muted), muted by default.
-- R20. A thin bar on the bottom edge shows conversation progress (definition pending, see Outstanding Questions).
+- R20. A thin bar on the bottom edge shows topics explored: it fills one quarter for each distinct pill topic the visitor has chosen, and is empty in State 1.
 - R21. The head keeps following the pointer in State 2.
 
 **Content model**
@@ -96,7 +99,7 @@ Recruiters give a portfolio link under a minute. A conventional PM portfolio (he
 **Accessibility and fallbacks**
 
 - R29. The whole hero is keyboard operable; pills are real buttons with visible focus; typed text is announced through a live region; visible text has at least 4.5:1 contrast.
-- R30. With reduced motion, head tracking, slides, breathing and typing are off and text appears instantly. (Whether the 3D head still renders is pending, see Outstanding Questions.)
+- R30. With reduced motion, the 3D head still renders facing forward, but head tracking, nods, slides, breathing, flicker and typing are off, and text appears instantly. The screen face shows without the talking animation.
 - R31. Without WebGL, a static character image is shown with screen content as a DOM overlay, and the full state machine still works.
 
 **Mobile (390×844)**
@@ -129,15 +132,16 @@ Recruiters give a portfolio link under a minute. A conventional PM portfolio (he
 - AE1. **Covers R10.** Given State 1, when the visitor clicks "Let's connect", the panel opens and the hero stays in idle.
 - AE2. **Covers R10, R29.** Given State 1 with focus on the page body, when the visitor presses Space, the transition starts and the page does not scroll.
 - AE3. **Covers R8.** Given State 1 for 20s with no input, the screen has shown at least two different nudges, each with a flicker.
-- AE4. **Covers R30.** Given reduced motion, when the visitor presses Enter, State 2 appears with all lines and pills present at once and the character already in its State 2 position.
+- AE4. **Covers R30.** Given reduced motion, when the visitor presses Enter, State 2 appears with all lines and pills present at once, the character already in its State 2 position, and the head facing forward with the face drawn on screen.
 - AE5. **Covers R31.** Given a browser with WebGL disabled, the visitor can start, choose each pill, and restart, and the screen overlay shows the correct content in each state.
 - AE6. **Covers R32.** Given 390×844 touch, a horizontal drag across the stage turns the head and does not start; a tap starts.
-- AE7. **Covers R18.** Given State 2 after two replies, when the visitor presses restart, State 1 returns with progress at zero.
+- AE7. **Covers R18, R20.** Given State 2 after choosing two different pills (progress at half), when the visitor presses restart, State 1 returns with progress at zero.
+- AE8. **Covers R20.** Given State 2, when the visitor chooses the same pill twice, progress advances only once.
 
 ### Success Criteria
 
 - LCP under 2.5s on a mid-range laptop; no CLS from the 3D swap-in.
-- Hero JavaScript within the budget agreed in Outstanding Questions.
+- Initial hero JS under about 150KB gzip; the lazy 3D chunk under about 250KB gzip.
 - The 3D head and the photographed body read as one object in screenshots at both breakpoints (judged at the prototype checkpoint).
 
 ### Scope Boundaries
@@ -151,17 +155,10 @@ Recruiters give a portfolio link under a minute. A conventional PM portfolio (he
 - Only three assets exist, all supplied in chat rather than the repo: front (1254², matches `front.png`), three-quarter (1254², `three-quarter.png`) and turnaround (1774×887, `turnaround.png`). All are RGB with a baked light-grey background (about #D9D8DB, slightly cool), not transparent. `dark.png`, `front-blank.png`, `body.png` and the Lisa screenshots were not supplied.
 - Without a transparent `body.png`, a seamless body plate needs either a cutout of `front.png` or a backdrop tuned to its baked grey. The prototype will try a cutout first.
 - `front.png` has "[CLICK] TO START_" baked in, so the no-WebGL fallback needs `front-blank.png` (or a covered screen region) to avoid doubled text.
-- `github.com/XS-Shiv/Portfolio` is empty (no default branch yet). A PR needs a base branch to exist.
+- `github.com/XS-Shiv/Portfolio` is empty. A small bootstrap commit (README, .gitignore) goes to `main` first, and the hero ships as a PR from `claude/peaceful-gates-es2ced` into `main`.
 - Vercel is not known to be connected to the repo; a preview link in the PR depends on that.
 
 ### Outstanding Questions
-
-**Resolve Before Planning**
-
-- Q1. Is the ~250KB gzip JS budget for the initial hero bundle only (3D chunk lazy and counted separately), or for everything including three.js? three + R3F + drei alone is roughly 180–220KB gzip before Next.js and Motion.
-- Q2. Under reduced motion, does the 3D head still render (frozen facing forward, screen face still drawn), or does the hero swap to the static image as the brief states?
-- Q3. What does the progress bar measure?
-- Q4. How should the empty repo get a base branch for the PR?
 
 **Deferred to Planning**
 
