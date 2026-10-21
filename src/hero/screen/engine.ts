@@ -59,6 +59,9 @@ export class ScreenEngine {
   private modeAt = 0;
   private flickerUntil = 0;
   private bootText = "";
+  private caption = "";
+  private captionAt = 0;
+  private slipUntil = 0;
   private talking = false;
   private nextBlink = 0;
   private blinkAt = -1e9;
@@ -158,6 +161,20 @@ export class ScreenEngine {
     this.talking = on;
   }
 
+  /** Small terminal caption under the eyes, e.g. "HELLO, HUMAN_". Types itself in. */
+  setCaption(text: string, now = performance.now()) {
+    if (text === this.caption) return;
+    this.caption = text;
+    this.captionAt = now;
+  }
+
+  /** The machine slips: the picture tears and flickers for a moment. */
+  glitch(ms = 420, now = performance.now()) {
+    if (this.reducedMotion) return;
+    this.slipUntil = now + ms;
+    this.flickerUntil = now + Math.min(ms, 260);
+  }
+
   /** Where the eyes look, -1..1 on each axis. */
   setGaze(x: number, y: number) {
     this.gaze.x = Math.max(-1, Math.min(1, x));
@@ -206,6 +223,8 @@ export class ScreenEngine {
       this.drawBootLine(now);
     } else {
       this.drawEyes(now);
+      this.drawCaption(now);
+      if (now < this.slipUntil) this.drawTear();
     }
     this.finish(brightness);
     void c;
@@ -293,6 +312,39 @@ export class ScreenEngine {
     const y = H * 0.5;
     this.glowText(shown, x, y);
     if (Math.floor(now / 200) % 2 === 0) this.glowText("_", x + c.measureText(shown).width, y);
+  }
+
+  private drawCaption(now: number) {
+    if (!this.caption) return;
+    const c = this.ctx;
+    this.setFont(Math.round(H * 0.062));
+    c.textBaseline = "alphabetic";
+    const hasCaret = this.caption.endsWith("_");
+    const body = hasCaret ? this.caption.slice(0, -1) : this.caption;
+    const chars = this.reducedMotion ? body.length : Math.floor((now - this.captionAt) / 40);
+    const shown = "> " + body.slice(0, chars);
+    const x = W * 0.07;
+    const y = H * 0.84;
+    this.glowText(shown, x, y, 0.92);
+    const caretOn = this.reducedMotion || Math.floor(now / 530) % 2 === 0;
+    if ((hasCaret || chars < body.length) && caretOn) {
+      this.glowText("_", x + c.measureText(shown).width, y, 0.92);
+    }
+  }
+
+  /** Horizontal tears: slices of the frame shoved sideways, with a colour fringe. */
+  private drawTear() {
+    const c = this.ctx;
+    const bands = 5 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < bands; i++) {
+      const y = Math.random() * H;
+      const h = 6 + Math.random() * 26;
+      const off = (Math.random() - 0.5) * 70;
+      c.drawImage(this.canvas, 0, y, W, h, off, y, W, h);
+      c.fillStyle = Math.random() > 0.5 ? "rgba(255,70,90,0.18)" : "rgba(60,170,255,0.18)";
+      c.fillRect(0, y, W, h * 0.4);
+    }
+    this.noise(500, 0.5);
   }
 
   private drawPowerOn(p: number) {
