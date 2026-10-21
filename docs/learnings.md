@@ -29,3 +29,11 @@ A luminance key works because everything on the body is dark and the backdrop is
 ## Testing without a GPU
 
 Headless Chromium here renders WebGL in software at 2–3 fps, which also slows `setTimeout`-driven typing. Tests wait for elements (`.pill`) rather than fixed delays.
+
+## Where the "I → we" glitch plays
+
+The glitch line is typed first, so it naturally lands in the small "previous" slot above the large line, which is chronologically right: he said it first. While it is being said that slot is sharp and black (`.line-prev.is-live`); once he recovers it fades like any other previous line. Putting the glitch on the large line instead meant either losing the destination's main sentence or typing three large lines in a row, which is too slow for a visitor who stays under a minute. Glitch lines are `once`, so a second visit skips them rather than replaying a joke that only works once.
+
+## Slimming the monitor
+
+The casing depths in `Crt3D.tsx` were tuned for a 5.0-deep monitor. Jacks, vents and the back-panel cables are placed in absolute depth, so they are scaled by `DS = M.d / 5`; without that, cables float behind a thinner casing.
