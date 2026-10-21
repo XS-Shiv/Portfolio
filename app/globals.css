@@ -204,7 +204,7 @@ body {
   inset: 0 0 auto 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: var(--inset) calc(var(--inset) + 2vw);
   pointer-events: none;
   z-index: 5;
@@ -577,6 +577,11 @@ body {
   color: #1c8fe6;
   mix-blend-mode: multiply;
   animation: tear-b 0.17s steps(2, end) infinite;
+}
+
+/* a single flipped word: keep the line from shifting while it glitches */
+.glitch-word {
+  white-space: nowrap;
 }
 
 /* ---------- calls to action: one main, the rest minor ---------- */

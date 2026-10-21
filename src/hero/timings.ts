@@ -27,12 +27,18 @@ export const T = {
   slipAfter: 650, // pause after the line types, before it slips
   slipHold: 720, // how long the "we" frame stays up
   slipRetype: 0.7, // the recovery types this much faster than normal
+  flipEveryMin: 6500, // once a step has settled, a word flips I <-> we every 6.5-11s
+  flipEveryMax: 11000,
+  flipHold: 650, // how long the flipped word stays
 
   // Screen face
   blinkMin: 2800,
   blinkMax: 5200,
   blinkFor: 120,
   talkFrame: 90,
+  twinkleMin: 4500, // a glint on one eye every 4.5-9s
+  twinkleMax: 9000,
+  twinkleFor: 700,
   nod: 420,
 
   // Character

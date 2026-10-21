@@ -8,6 +8,7 @@ import type { HeadControl } from "./character/types";
 import { contact, dialogue, hints, options, screen, site, type DialogueOption } from "./content";
 import { talkBox } from "./layout";
 import { finalText, initialState, ledOf, progressOf, reducer } from "./machine";
+import { flipAt, flipCount } from "./pronouns";
 import { ScreenEngine } from "./screen/engine";
 import { Sound } from "./sound";
 import { EASE, HEAD, T, TAP_SLOP } from "./timings";
@@ -38,6 +39,21 @@ function Spoken({ text, glitch }: { text: string; glitch: boolean }) {
     <span className="glitch" data-text={text}>
       {text}
     </span>
+  );
+}
+
+/** Text with one word mid-flip (I <-> we), or plain text when nothing is flipping. */
+function Flip({ text, k }: { text: string; k: number | null }) {
+  const parts = k === null ? null : flipAt(text, k);
+  if (!parts) return <>{text}</>;
+  return (
+    <>
+      {parts.before}
+      <span className="glitch glitch-word" data-text={parts.word}>
+        {parts.word}
+      </span>
+      {parts.after}
+    </>
   );
 }
 
@@ -100,6 +116,7 @@ export default function Hero() {
   const [panel, setPanel] = useState<"none" | "connect">("none");
   const [typed, setTyped] = useState<Typed>({ id: -1, n: 0, show: "text" });
   const [announce, setAnnounce] = useState("");
+  const [flip, setFlip] = useState<{ slot: string; k: number } | null>(null);
   const connectBtn = useRef<HTMLButtonElement>(null);
   const firstCta = useRef<HTMLElement | null>(null);
   const byKey = useRef(false);
@@ -141,7 +158,6 @@ export default function Hero() {
     const later = (fn: () => void, ms: number) => timers.push(window.setTimeout(fn, ms));
 
     if (phase === "idle") {
-      engine.setCaption("");
       engine.showText(screen.idle);
       // alternate: picture, text nudge, picture, picture, text nudge, ...
       let k = 0;
@@ -168,18 +184,12 @@ export default function Hero() {
       later(() => dispatch({ type: "BOOT_DONE" }), reduced ? 0 : T.slideDelay + T.slide);
     } else if (phase === "restarting") {
       engine.setTalking(false);
-      engine.setCaption("");
       engine.flickerTo(screen.idle);
       setPanel("none");
       later(() => dispatch({ type: "RESTART_DONE" }), reduced ? 0 : T.restartSlide);
     }
     return () => timers.forEach(clearTimeout);
   }, [phase, engine, reduced]);
-
-  // the caption under the eyes follows the conversation
-  useEffect(() => {
-    if (engine && talking) engine.setCaption(dialogue[state.node].screen);
-  }, [engine, talking, state.node]);
 
   // ---------- typing (with the occasional "I -> we" slip) ----------
   const line = transcript[typedUpTo];
@@ -270,6 +280,46 @@ export default function Hero() {
     const id = window.setTimeout(() => firstCta.current?.focus(), 60);
     return () => clearTimeout(id);
   }, [ctasShown, state.node]);
+
+  // ---------- the recurring I <-> we flip ----------
+  useEffect(() => {
+    if (!ctasShown || reduced) return;
+    const last = transcript[transcript.length - 1];
+    const slots = [
+      { slot: "current", text: last ? finalText(last) : "", weight: 3 },
+      { slot: "sub", text: node.sub, weight: 2 },
+      ...ctas.map((o) => ({ slot: `cta-${o.id}`, text: o.sub ?? "", weight: 1 })),
+    ].flatMap((s) => {
+      const count = flipCount(s.text);
+      return count ? Array.from({ length: s.weight }, () => ({ slot: s.slot, count })) : [];
+    });
+    if (!slots.length) return;
+    const timers: number[] = [];
+    const loop = () => {
+      const wait = T.flipEveryMin + Math.random() * (T.flipEveryMax - T.flipEveryMin);
+      timers.push(
+        window.setTimeout(() => {
+          const pick = slots[Math.floor(Math.random() * slots.length)];
+          setFlip({ slot: pick.slot, k: Math.floor(Math.random() * pick.count) });
+          engine?.glitch(300);
+          timers.push(
+            window.setTimeout(() => {
+              setFlip(null);
+              loop();
+            }, T.flipHold),
+          );
+        }, wait),
+      );
+    };
+    loop();
+    return () => {
+      timers.forEach(clearTimeout);
+      setFlip(null);
+    };
+    // the slots only change with the node
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctasShown, state.node, reduced, engine]);
+  const flipK = (slot: string) => (flip?.slot === slot ? flip.k : null);
 
   // ---------- head follows the pointer ----------
   const aimAt = useCallback(
@@ -387,7 +437,11 @@ export default function Hero() {
         </span>
         <span className="cta-body">
           <span className="cta-label">{opt.label}</span>
-          {opt.sub && <span className="cta-sub">{opt.sub}</span>}
+          {opt.sub && (
+            <span className="cta-sub">
+              <Flip text={opt.sub} k={flipK(`cta-${opt.id}`)} />
+            </span>
+          )}
         </span>
         <span className="cta-arrow" aria-hidden>
           <Arrow />
@@ -461,7 +515,6 @@ export default function Hero() {
 
         {/* ---------- top bar, every state ---------- */}
         <header className="chrome" data-ui>
-          <p className="chrome-name">{site.signature}</p>
 
           <div className="chrome-right">
             <button
@@ -574,7 +627,11 @@ export default function Hero() {
               </p>
 
               <p className="line-current" aria-hidden>
-                <Spoken text={textOf(curIdx)} glitch={curLive && slipping} />
+                {curLive && slipping ? (
+                  <Spoken text={textOf(curIdx)} glitch />
+                ) : (
+                  <Flip text={textOf(curIdx)} k={done ? flipK("current") : null} />
+                )}
                 {curLive && !slipping && <span className="caret" />}
               </p>
 
@@ -588,7 +645,7 @@ export default function Hero() {
                       exit={{ opacity: 0, transition: { duration: 0.12 } }}
                       transition={arrive}
                     >
-                      {node.sub}
+                      <Flip text={node.sub} k={flipK("sub")} />
                     </motion.p>
                   )}
                 </AnimatePresence>

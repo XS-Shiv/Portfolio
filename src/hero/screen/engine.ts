@@ -65,6 +65,9 @@ export class ScreenEngine {
   private talking = false;
   private nextBlink = 0;
   private blinkAt = -1e9;
+  private nextTwinkle = 0;
+  private twinkleAt = -1e9;
+  private twinkleEye = 0;
   private gaze = { x: 0, y: 0 };
   private pics: Pic[] = [];
   private picIndex = 0;
@@ -155,6 +158,7 @@ export class ScreenEngine {
     this.mode = "eyes";
     this.modeAt = now;
     this.scheduleBlink(now);
+    this.nextTwinkle = now + 1800 + Math.random() * 2500;
   }
 
   setTalking(on: boolean) {
@@ -419,6 +423,13 @@ export class ScreenEngine {
     if (!this.reducedMotion && now > this.nextBlink) {
       this.blinkAt = now;
       this.scheduleBlink(now);
+      // now and then, a quick double blink
+      if (Math.random() < 0.3) this.nextBlink = now + T.blinkFor * 1.6 + 110;
+    }
+    if (!this.reducedMotion && now > this.nextTwinkle) {
+      this.twinkleAt = now;
+      this.twinkleEye = Math.random() < 0.5 ? 0 : 1;
+      this.nextTwinkle = now + T.twinkleMin + Math.random() * (T.twinkleMax - T.twinkleMin);
     }
     const bt = now - this.blinkAt;
     const blinkDur = T.blinkFor * 1.6;
@@ -439,6 +450,33 @@ export class ScreenEngine {
     c.globalAlpha = fade * (0.92 + talk * 0.08);
     this.eye(W * 0.3 + gx, cy + gy, r, open);
     this.eye(W * 0.7 + gx, cy + gy, r, open);
+    c.restore();
+
+    // a twinkle: a small four-point glint that blooms on one eye and fades
+    const tt = (now - this.twinkleAt) / T.twinkleFor;
+    if (tt >= 0 && tt < 1 && open > 0.6) {
+      const ex = (this.twinkleEye ? W * 0.7 : W * 0.3) + gx + r * 0.42;
+      const ey = cy + gy - r * 0.48;
+      this.sparkle(ex, ey, r * 0.55 * Math.sin(tt * Math.PI), Math.sin(tt * Math.PI));
+    }
+  }
+
+  private sparkle(x: number, y: number, size: number, alpha: number) {
+    const c = this.ctx;
+    c.save();
+    c.translate(x, y);
+    c.globalAlpha = alpha;
+    c.shadowColor = "rgba(200,220,255,0.9)";
+    c.shadowBlur = 18;
+    c.fillStyle = "#ffffff";
+    c.beginPath();
+    const w = size * 0.16;
+    c.moveTo(0, -size);
+    c.quadraticCurveTo(w, -w, size, 0);
+    c.quadraticCurveTo(w, w, 0, size);
+    c.quadraticCurveTo(-w, w, -size, 0);
+    c.quadraticCurveTo(-w, -w, 0, -size);
+    c.fill();
     c.restore();
   }
 

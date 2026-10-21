@@ -6,7 +6,6 @@
  * - `lines`: what the character says, typed in order. The newest line is large,
  *   the one before it small and faded.
  * - `sub`: a short subtext under the large line
- * - `screen`: the caption on the monitor under the eyes
  * - `options`: the replies. The first is the main call to action, the rest are minor.
  *
  * The "I → we" glitch: a line can carry a `slip` (the same sentence with "we")
@@ -51,14 +50,11 @@ export type DialogueNode = {
   system: string;
   lines: ScriptLine[];
   sub: string;
-  screen: string;
   options: OptionId[];
 };
 
 export const site = {
   name: "Shivanand Shukla",
-  /** Top-left signature. */
-  signature: "Shiv.",
   title: "Shivanand Shukla · AI product manager who builds",
   description:
     "Shivanand Shukla is an AI-first product manager who builds what he plans. Click the monitor to say hi.",
@@ -153,7 +149,6 @@ export const dialogue: Record<NodeId, DialogueNode> = {
       "I'm Shiv. This is my portfolio. The machine would like you to believe it had more input.",
     ],
     sub: "I let it handle the introduction. In hindsight, that was generous.",
-    screen: "HELLO, HUMAN_",
     options: ["situation", "behind", "thoughts"],
   },
   situation: {
@@ -168,7 +163,6 @@ export const dialogue: Record<NodeId, DialogueNode> = {
       "I started using AI to build things. Somewhere along the way, it started acting like it worked here.",
     ],
     sub: "Working prototypes, experiments, and a mildly concerning amount of collaboration.",
-    screen: "LOADING LOGS_",
     options: ["process", "behind", "thoughts"],
   },
   process: {
@@ -183,7 +177,6 @@ export const dialogue: Record<NodeId, DialogueNode> = {
       "I plan the product, then build the first version myself. The machine types fast. I decide what's worth typing.",
     ],
     sub: "The full build log is on its way. The machine insists on more polish.",
-    screen: "PROCESSING_",
     options: ["code", "behind", "thoughts"],
   },
   behind: {
@@ -198,14 +191,12 @@ export const dialogue: Record<NodeId, DialogueNode> = {
       "Before you ask, yes, there is an actual person under all this hardware.",
     ],
     sub: "My background, what I do, and the parts of me that aren't terminal output.",
-    screen: "HUMAN DETECTED_",
     options: ["hello", "situation", "thoughts"],
   },
   thoughts: {
     system: "READING THOUGHTS.TXT_",
     lines: ["Occasionally, I have thoughts. Occasionally, the machine agrees with them."],
     sub: "Notes on products, AI, ideas, and things I've probably overthought.",
-    screen: "THINKING..._",
     options: ["medium", "situation", "behind"],
   },
 };

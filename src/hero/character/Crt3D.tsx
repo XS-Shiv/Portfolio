@@ -219,11 +219,12 @@ function useMaterials() {
   return useMemo(() => {
     const brushed = brushedTexture();
     return {
+      // the front frame: dark, satin metal rather than a shiny chrome rim
       chrome: new THREE.MeshStandardMaterial({
-        color: "#9c9ea3",
-        metalness: 1,
-        roughness: 0.26,
-        envMapIntensity: 0.8,
+        color: "#55575c",
+        metalness: 0.8,
+        roughness: 0.5,
+        envMapIntensity: 0.45,
       }),
       bezel: new THREE.MeshStandardMaterial({
         color: "#0a0a0b",
@@ -232,11 +233,11 @@ function useMaterials() {
         envMapIntensity: 0.12,
       }),
       casing: new THREE.MeshStandardMaterial({
-        color: "#4b4e55",
-        metalness: 0.85,
-        roughness: 0.38,
+        color: "#36383d",
+        metalness: 0.75,
+        roughness: 0.52,
         roughnessMap: brushed,
-        envMapIntensity: 0.75,
+        envMapIntensity: 0.5,
       }),
       accent: new THREE.MeshStandardMaterial({ color: "#26282d", metalness: 0.6, roughness: 0.4 }),
       black: new THREE.MeshStandardMaterial({
