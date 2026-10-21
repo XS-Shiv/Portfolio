@@ -32,7 +32,6 @@ export default function Hero() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const { phase, transcript, typedUpTo } = state;
   const reduced = useMedia("(prefers-reduced-motion: reduce)");
-  const coarse = useMedia("(pointer: coarse)");
 
   const [engine, setEngine] = useState<ScreenEngine | null>(null);
   const sound = useRef<Sound | null>(null);
@@ -46,8 +45,6 @@ export default function Hero() {
   const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
   const [paused, setPaused] = useState(false);
   const [panel, setPanel] = useState<"none" | "connect" | "menu">("none");
-  const [showHint, setShowHint] = useState(false);
-  const [showSideHint, setShowSideHint] = useState(false);
   const [typed, setTyped] = useState<{ id: number; n: number }>({ id: -1, n: 0 });
   const [pillsShown, setPillsShown] = useState(false);
   const [announce, setAnnounce] = useState("");
@@ -62,6 +59,7 @@ export default function Hero() {
   useEffect(() => {
     const e = new ScreenEngine();
     e.showText(screen.idle);
+    e.loadImages(screen.images);
     setEngine(e);
     sound.current = new Sound();
     const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
@@ -92,28 +90,25 @@ export default function Hero() {
 
     if (phase === "idle") {
       engine.showText(screen.idle);
+      // alternate: picture, text nudge, picture, picture, text nudge, ...
       let k = 0;
+      let n = 0;
       const nudge = () => {
         later(
           () => {
-            engine.flickerTo(screen.nudges[k++ % screen.nudges.length]);
+            const pictureTurn = n++ % 3 !== 1;
+            if (!(pictureTurn && engine.popImage())) {
+              engine.flickerTo(screen.nudges[k++ % screen.nudges.length]);
+            }
             nudge();
           },
           T.nudgeMin + Math.random() * (T.nudgeMax - T.nudgeMin),
         );
       };
+      // the first picture comes early, so a quick visitor still sees one
+      later(() => engine.popImage(), 2200);
       nudge();
-      later(() => setShowHint(true), T.hintDelay);
-      const side = () =>
-        later(() => {
-          setShowSideHint(true);
-          later(() => setShowSideHint(false), T.sideHintFor);
-          side();
-        }, T.sideHintEvery);
-      side();
     } else if (phase === "booting") {
-      setShowHint(false);
-      setShowSideHint(false);
       sound.current?.hum();
       engine.powerOn(screen.boot);
       later(() => engine.showFace(), reduced ? 0 : T.bootLineUntil);
@@ -332,26 +327,11 @@ export default function Hero() {
           }}
           fadeBody={inConversation && !!talk?.columnTop}
           paused={paused}
-        >
-          <AnimatePresence>
-            {phase === "idle" && showSideHint && (
-              <motion.p
-                className="hint-side"
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0 }}
-                transition={arrive}
-                aria-hidden
-              >
-                {hints.side}
-              </motion.p>
-            )}
-          </AnimatePresence>
-        </Character>
+        ></Character>
 
         {/* ---------- top chrome ---------- */}
         <header className="chrome" data-ui>
-          <p className="chrome-name">{site.name}</p>
+          <p className="chrome-name">{site.shortName}</p>
 
           <AnimatePresence>
             {inConversation && (
@@ -480,20 +460,6 @@ export default function Hero() {
             Start the conversation
           </button>
         )}
-        <AnimatePresence>
-          {phase === "idle" && showHint && (
-            <motion.p
-              className="hint-bottom"
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, transition: { duration: 0.18 } }}
-              transition={{ duration: 0.6, ease: EASE.arrive }}
-              aria-hidden
-            >
-              {coarse ? hints.touch : hints.pointer}
-            </motion.p>
-          )}
-        </AnimatePresence>
 
         {/* ---------- State 2 ---------- */}
         <AnimatePresence>

@@ -24,14 +24,15 @@ export function idleBox(vw: number, vh: number): Box {
 /** Where it sits in State 2, plus where the conversation column starts. */
 export function talkBox(vw: number, vh: number): { box: Box; columnTop: number } {
   if (isCompact(vw, vh)) {
-    const s = Math.min((vw * 0.45) / MONITOR_W, (vh * 0.21) / MONITOR_H);
+    const s = Math.min((vw * 0.5) / MONITOR_W, (vh * 0.22) / MONITOR_H);
     const inset = 20;
     const box = place(s, vw - inset - (s * MONITOR_W) / 2 + s * 0.02, Math.max(vh * 0.19, 64 + s * 0.24));
     // start the text just below the collar (source row ~900)
     const columnTop = Math.max(box.y + (900 / SRC) * s, vh * 0.36);
     return { box, columnTop };
   }
+  // stays big, like State 1, and steps to the right of the conversation
   const idle = idleBox(vw, vh);
-  const s = idle.s * 0.82;
-  return { box: place(s, vw * 0.7, vh * 0.52), columnTop: 0 };
+  const s = idle.s * 0.96;
+  return { box: place(s, vw * 0.67, vh * 0.47), columnTop: 0 };
 }

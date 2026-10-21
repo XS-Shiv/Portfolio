@@ -29,9 +29,11 @@ export type DialogueNode = {
 
 export const site = {
   name: "Shivanand Shukla",
+  /** Shown top-left. */
+  shortName: "Shiv",
   title: "Shivanand Shukla — AI-first product manager",
   description: "Shiv is an AI-first product manager who builds what he plans. Say hi to the CRT.",
-  connectLabel: "Let's connect",
+  connectLabel: "Let's talk",
 };
 
 export const contact: Link[] = [
@@ -52,12 +54,22 @@ export const screen = {
   idle: "[CLICK] TO START_",
   nudges: ["psst… click me", "I don't bite", "[CLICK] TO START_"],
   boot: "SHIV.OS  READY",
+  /**
+   * Pictures that flash on the screen between nudges, broadcast in CRT colours.
+   * Drop your own photos in public/screen/ and list them here; "pixel:heart",
+   * "pixel:bulb", "pixel:spark" and "pixel:hi" are built in.
+   */
+  images: [
+    "/screen/three-quarter.webp",
+    "pixel:hi",
+    "/screen/side.webp",
+    "pixel:bulb",
+    "/screen/back.webp",
+    "pixel:heart",
+  ],
 };
 
 export const hints = {
-  side: "psst… click the screen",
-  pointer: "move your cursor · click anywhere to start",
-  touch: "drag to look around · tap anywhere to start",
   restart: "Start over",
   sound: "Sound",
   soundOn: "Sound on",
