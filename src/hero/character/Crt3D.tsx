@@ -42,7 +42,7 @@ const M = {
   scale: 0.9,
   w: 6.0,
   h: 6.2,
-  d: 5.0,
+  d: 3.3, // slim: the original casing was 5.0 deep
   frame: 0.15, // chrome rim width
   frameDepth: 0.34,
   screenW: 5.0,
@@ -51,6 +51,8 @@ const M = {
   lift: 2.8, // monitor centre above the neck pivot (low, so only a little neck shows)
   zOffset: -0.1,
 };
+/** Depths were tuned for a 5.0-deep casing; scale them with the slimmer one. */
+const DS = M.d / 5;
 const SIDE = (M.w - 0.18) / 2;
 const CASING_Z = -M.frameDepth - (M.d * 0.7) / 2 + 0.05;
 const BOTTOM = -M.h / 2 - 0.12;
@@ -109,7 +111,7 @@ const CABLES: Cable[] = [
   },
   // left side jacks: big loops down onto the left of the chest (they meet the photo's own cables)
   {
-    start: [-SIDE - 0.1, -2.2, -0.9],
+    start: [-SIDE - 0.1, -2.2, -0.9 * DS],
     dir: [-1, -0.2, 0],
     end: [421, 858],
     dz: 0.05,
@@ -117,7 +119,7 @@ const CABLES: Cable[] = [
     bow: [-0.9, 0.5],
   },
   {
-    start: [-SIDE - 0.1, 0.9, -2.4],
+    start: [-SIDE - 0.1, 0.9, -2.4 * DS],
     dir: [-1, 0, 0],
     end: [393, 869],
     dz: 0.05,
@@ -135,7 +137,7 @@ const CABLES: Cable[] = [
     bow: [-0.6, 0],
   },
   {
-    start: [-SIDE - 0.1, -1.4, -3.1],
+    start: [-SIDE - 0.1, -1.4, -3.1 * DS],
     dir: [-1, -0.4, -0.2],
     end: [430, 1000],
     dz: -0.6,
@@ -145,10 +147,10 @@ const CABLES: Cable[] = [
     ferrite: 0.5,
   },
   // right side jack
-  { start: [SIDE + 0.1, -1.8, -2.0], dir: [1, -0.3, 0], end: [930, 1020], dz: -0.6, sag: 1.1, bow: [0.8, 0] },
+  { start: [SIDE + 0.1, -1.8, -2.0 * DS], dir: [1, -0.3, 0], end: [930, 1020], dz: -0.6, sag: 1.1, bow: [0.8, 0] },
   // back panel: hang behind the neck, seen when he turns
-  { start: [-0.6, -2.6, -5.1], dir: [0, -0.4, -1], end: [610, 900], dz: -2.4, sag: 0.4, bow: [0, -0.4] },
-  { start: [0.8, -2.6, -5.1], dir: [0, -0.4, -1], end: [700, 900], dz: -2.4, sag: 0.4, bow: [0, -0.4] },
+  { start: [-0.6, -2.6, -5.1 * DS], dir: [0, -0.4, -1], end: [610, 900], dz: -2.4, sag: 0.4, bow: [0, -0.4] },
+  { start: [0.8, -2.6, -5.1 * DS], dir: [0, -0.4, -1], end: [700, 900], dz: -2.4, sag: 0.4, bow: [0, -0.4] },
 ];
 
 function roundedRect(w: number, h: number, r: number, cx = 0, cy = 0) {
@@ -218,24 +220,25 @@ function useMaterials() {
     const brushed = brushedTexture();
     return {
       chrome: new THREE.MeshStandardMaterial({
-        color: "#cfccc8",
+        color: "#9c9ea3",
         metalness: 1,
-        roughness: 0.24,
-        envMapIntensity: 0.85,
+        roughness: 0.26,
+        envMapIntensity: 0.8,
       }),
       bezel: new THREE.MeshStandardMaterial({
-        color: "#101012",
+        color: "#0a0a0b",
         metalness: 0.05,
-        roughness: 0.55,
-        envMapIntensity: 0.35,
+        roughness: 0.82,
+        envMapIntensity: 0.12,
       }),
       casing: new THREE.MeshStandardMaterial({
-        color: "#8b94a8",
-        metalness: 0.8,
-        roughness: 0.36,
+        color: "#4b4e55",
+        metalness: 0.85,
+        roughness: 0.38,
         roughnessMap: brushed,
+        envMapIntensity: 0.75,
       }),
-      accent: new THREE.MeshStandardMaterial({ color: "#3a4a7c", metalness: 0.6, roughness: 0.35 }),
+      accent: new THREE.MeshStandardMaterial({ color: "#26282d", metalness: 0.6, roughness: 0.4 }),
       black: new THREE.MeshStandardMaterial({
         color: "#151517",
         metalness: 0.1,
@@ -310,7 +313,7 @@ function Monitor({ mats, screenMat, led }: { mats: Mats; screenMat: THREE.Materi
         key={`v${sx}${i}`}
         geometry={i < 7 ? geo.vent : geo.ventShort}
         material={mats.vent}
-        position={[sx * (side + 0.01), i < 7 ? 1.2 : -1.6, casingZ - 0.3 - (i % 7) * 0.24]}
+        position={[sx * (side + 0.01), i < 7 ? 1.2 : -1.6, casingZ - 0.3 * DS - (i % 7) * 0.24 * DS]}
       />
     ));
 
@@ -642,20 +645,23 @@ function Scene({ engine, head, led, onReady }: Omit<RendererProps, "paused">) {
       nod = Math.sin((sinceNod / T.nod) * Math.PI) * HEAD.nodPitchDeg;
     }
     const breathe = head.frozen ? 0 : Math.sin((now / T.breathePeriod) * Math.PI * 2);
+    // the shoulders sway a little on their own, so the body never looks frozen
+    const sway = head.frozen ? 0 : Math.sin((now / TORSO.swayPeriod) * Math.PI * 2) * TORSO.sway;
+    const torsoYaw = a.torso + sway;
     if (torso.current) {
       torso.current.rotation.set(
-        a.pitch * TORSO.pitchFollow * DEG,
-        a.torso * DEG,
-        -a.torso * TORSO.roll * DEG,
+        (a.pitch * TORSO.pitchFollow + breathe * 0.4) * DEG,
+        torsoYaw * DEG,
+        -torsoYaw * TORSO.roll * DEG,
       );
-      torso.current.position.set(TP.x + a.torso * TORSO.shift, TP.y + breathe * TORSO.breathe, TP.z);
+      torso.current.position.set(TP.x + torsoYaw * TORSO.shift, TP.y + breathe * TORSO.breathe, TP.z);
     }
     if (pivot.current) {
       // the head's own turn is what is left after the torso's
       pivot.current.rotation.set(
         (a.pitch * (1 - TORSO.pitchFollow) + nod) * DEG,
-        (a.yaw - a.torso) * DEG,
-        a.torso * TORSO.roll * DEG,
+        (a.yaw - torsoYaw) * DEG,
+        torsoYaw * TORSO.roll * DEG,
         "YXZ",
       );
     }

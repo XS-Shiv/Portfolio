@@ -23,6 +23,11 @@ export const T = {
   betweenLines: 350,
   pillStagger: 80,
 
+  // The "I -> we" glitch
+  slipAfter: 650, // pause after the line types, before it slips
+  slipHold: 720, // how long the "we" frame stays up
+  slipRetype: 0.7, // the recovery types this much faster than normal
+
   // Screen face
   blinkMin: 2800,
   blinkMax: 5200,
@@ -49,12 +54,14 @@ export const HEAD = {
 
 /** How the body follows the head. */
 export const TORSO = {
-  follow: 0.28, // share of the head's turn the shoulders take
-  damping: 1.4, // slower than the head, so the body trails it
-  roll: 0.12, // shoulders dip a little into the turn
-  shift: 0.012, // and slide sideways (world units per degree)
-  pitchFollow: 0.15,
-  breathe: 0.016, // ~1.6px
+  follow: 0.5, // share of the head's turn the shoulders take
+  damping: 1.7, // a little slower than the head, so the body trails it
+  roll: 0.28, // shoulders dip into the turn
+  shift: 0.028, // and slide sideways (world units per degree)
+  pitchFollow: 0.32, // and lean in when he looks down
+  breathe: 0.035, // ~3.5px
+  sway: 0.9, // idle sway of the shoulders, degrees
+  swayPeriod: 7400, // ms
 };
 
 /** Motion curves (cubic-bezier control points). */
