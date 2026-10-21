@@ -40,16 +40,16 @@ export function talkBox(vw: number, vh: number): { box: Box; columnTop: number }
   const reach = MONITOR_W + 0.1; // the monitor plus its cables looping out on the left
 
   // (the 3D monitor draws about 40px below its box top, so these sit a little high)
-  let s = Math.min((vh * 0.62) / MONITOR_H, (buttonsStart - textEnd) / reach);
-  let top = 0;
+  let s = Math.min((vh * 0.54) / MONITOR_H, (buttonsStart - textEnd) / reach);
+  let top = vh * 0.05;
   // On narrower screens the buttons squeeze it; drop it just below the top bar
   // instead, where it can stay big.
-  const below = Math.min((vh * 0.57) / MONITOR_H, (vw - pad - textEnd) / reach);
+  const below = Math.min((vh * 0.52) / MONITOR_H, (vw - pad - textEnd) / reach);
   if (below > s * 1.08) {
     s = below;
     top = 60;
   }
-  const right = top < 40 ? buttonsStart : vw - pad;
+  const right = top < 56 ? buttonsStart : vw - pad;
   const lo = textEnd + s * (MONITOR_W / 2 + 0.1);
   const hi = right - (s * MONITOR_W) / 2;
   const cx = Math.min(Math.max(vw * 0.58, lo), Math.max(lo, hi));

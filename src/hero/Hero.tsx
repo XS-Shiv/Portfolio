@@ -6,7 +6,7 @@ import { Character, type Box } from "./character/Character";
 import { HEAD_CENTER, SRC } from "./character/geometry";
 import type { HeadControl } from "./character/types";
 import { contact, hints, intro, screen, site, status } from "./content";
-import { talkBox } from "./layout";
+import { isCompact, talkBox } from "./layout";
 import { initialState, ledOf, reducer } from "./machine";
 import { flipAt, flipCount } from "./pronouns";
 import { ScreenEngine } from "./screen/engine";
@@ -114,6 +114,9 @@ export default function Hero() {
   const head = useRef<HeadControl>({
     yaw: HEAD.restYawDeg,
     pitch: HEAD.restPitchDeg,
+    roll: 0,
+    yawBias: 0,
+    body: 1,
     nodAt: -1e9,
     frozen: false,
   });
@@ -210,8 +213,10 @@ export default function Hero() {
     let n = 0;
     let timer = 0;
     setTyped({ id: line.id, n: 0 });
+    // body lines type two characters per tick, so they stay quick without a render per letter
+    const chunk = typedUpTo >= intro.lines.length ? 2 : 1;
     const step = () => {
-      n++;
+      n = Math.min(line.text.length, n + chunk);
       setTyped({ id: line.id, n });
       if (n < line.text.length) {
         const speed = typedUpTo >= intro.lines.length ? T.bodySpeed : 1;
@@ -322,25 +327,51 @@ export default function Hero() {
   const flipK = (slot: string) => (flip?.slot === slot ? flip.k : null);
 
   // ---------- head follows the pointer ----------
+  // In State 2 the head holds an imposing pose (turned toward the text, tilted,
+  // on a bigger frame) and follows the cursor only a little around it.
+  const compact = viewport ? isCompact(viewport.w, viewport.h) : false;
+  const pose = talking
+    ? compact
+      ? { yaw: -8, pitch: 2, roll: 3, body: 1, follow: 0.6 }
+      : {
+          yaw: HEAD.conversationYawBiasDeg,
+          pitch: HEAD.conversationPitchDeg,
+          roll: HEAD.conversationRollDeg,
+          body: HEAD.conversationBody,
+          follow: HEAD.conversationFollow,
+        }
+    : { yaw: HEAD.restYawDeg, pitch: HEAD.restPitchDeg, roll: 0, body: 1, follow: 1 };
+
   const aimAt = useCallback(
     (x: number, y: number) => {
-      if (!viewport) return;
+      if (!viewport || reduced) return;
       const box = target ?? ({ s: 0, x: viewport.w / 2, y: viewport.h * 0.46 } as Box);
       const cx = box.s ? box.x + (HEAD_CENTER.x / SRC) * box.s : box.x;
       const cy = box.s ? box.y + (HEAD_CENTER.y / SRC) * box.s : box.y;
-      const bias = target ? HEAD.conversationYawBiasDeg : 0;
-      head.current.yaw = clamp((x - cx) / (viewport.w * 0.5)) * HEAD.maxYawDeg + bias * 0.5;
+      const dx = clamp((x - cx) / (viewport.w * 0.5));
       const dy = clamp((y - cy) / (viewport.h * 0.5));
-      head.current.pitch = dy * (dy > 0 ? HEAD.maxPitchDeg : HEAD.maxPitchUpDeg);
+      if (talking) {
+        head.current.yaw = pose.yaw + dx * HEAD.maxYawDeg * pose.follow;
+        head.current.pitch = pose.pitch + dy * HEAD.maxPitchDeg * pose.follow;
+      } else {
+        head.current.yaw = dx * HEAD.maxYawDeg;
+        head.current.pitch = dy * (dy > 0 ? HEAD.maxPitchDeg : HEAD.maxPitchUpDeg);
+      }
     },
-    [viewport, target],
+    // pose is derived from talking and compact
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewport, target, talking, compact, reduced],
   );
 
-  // when the state changes with no pointer, settle into the state's rest pose
+  // when the state changes, settle into that state's pose
   useEffect(() => {
-    head.current.yaw = talking ? HEAD.conversationYawBiasDeg : HEAD.restYawDeg;
-    head.current.pitch = talking ? 2 : HEAD.restPitchDeg;
-  }, [talking]);
+    head.current.yaw = pose.yaw;
+    head.current.pitch = pose.pitch;
+    head.current.roll = pose.roll;
+    head.current.yawBias = talking ? pose.yaw : 0;
+    head.current.body = pose.body;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [talking, compact]);
 
   const down = useRef<{ x: number; y: number; id: number } | null>(null);
   useEffect(() => {
@@ -349,8 +380,8 @@ export default function Hero() {
     };
     const leave = (e: MouseEvent) => {
       if (!e.relatedTarget) {
-        head.current.yaw = talking ? HEAD.conversationYawBiasDeg : HEAD.restYawDeg;
-        head.current.pitch = talking ? 2 : HEAD.restPitchDeg;
+        head.current.yaw = pose.yaw;
+        head.current.pitch = pose.pitch;
       }
     };
     window.addEventListener("pointermove", move);
@@ -413,11 +444,12 @@ export default function Hero() {
   const led = ledOf(state);
   const compactTop = talk && talk.columnTop ? `${talk.columnTop}px` : undefined;
   const statusText = phase === "booting" ? status.booting : phase === "conversation" ? status.ready : "";
-  const appear = (i: number) => ({
-    initial: { opacity: 0, y: 10 },
+  // the main button, restart and the cards all land together, in one beat
+  const reveal = {
+    initial: { opacity: 0, y: reduced ? 0 : 8 },
     animate: { opacity: 1, y: 0 },
-    transition: { ...arrive, delay: reduced ? 0 : i * 0.09 },
-  });
+    transition: { ...arrive, duration: reduced ? 0 : 0.35 },
+  };
 
   return (
     <LazyMotion features={domAnimation} strict>
@@ -582,7 +614,7 @@ export default function Hero() {
                 {done && (
                   <>
                     {/* does nothing yet: the work section comes later */}
-                    <motion.button ref={mainCta} type="button" className="cta-main" {...appear(0)}>
+                    <motion.button ref={mainCta} type="button" className="cta-main" {...reveal}>
                       {intro.primary}
                       <Arrow size={20} />
                     </motion.button>
@@ -591,7 +623,7 @@ export default function Hero() {
                       className="restart"
                       onClick={restart}
                       aria-label={hints.restart}
-                      {...appear(1)}
+                      {...reveal}
                     >
                       <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
                         <path
@@ -622,7 +654,7 @@ export default function Hero() {
               exit={{ opacity: 0, transition: { duration: 0.18 } }}
             >
               {intro.cards.map((c, i) => (
-                <motion.button key={c.id} type="button" className="card" {...appear(i)}>
+                <motion.button key={c.id} type="button" className="card" {...reveal}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img className="card-img" src={c.image} alt="" draggable={false} />
                   <span className="card-label">

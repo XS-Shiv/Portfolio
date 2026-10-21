@@ -539,12 +539,27 @@ function BodyPlate({ onLoad }: { onLoad: () => void }) {
     return t;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // soften the photo's own left and right edges, which show once the torso is scaled up
+  const edgeFade = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 1;
+    const x = c.getContext("2d")!;
+    const g = x.createLinearGradient(0, 0, 256, 0);
+    g.addColorStop(0, "#000");
+    g.addColorStop(0.1, "#fff");
+    g.addColorStop(0.9, "#fff");
+    g.addColorStop(1, "#000");
+    x.fillStyle = g;
+    x.fillRect(0, 0, 256, 1);
+    return new THREE.CanvasTexture(c);
+  }, []);
   const k = (CAM_Z - BODY_Z) / CAM_Z;
   const centre = torsoLocal(at(SRC / 2, BODY_TOP + BODY_SIZE.h / 2, BODY_Z));
   return (
     <mesh position={centre} renderOrder={1}>
       <planeGeometry args={[(BODY_SIZE.w / 100) * k, (BODY_SIZE.h / 100) * k]} />
-      <meshBasicMaterial map={tex} transparent alphaTest={0.03} toneMapped={false} />
+      <meshBasicMaterial map={tex} alphaMap={edgeFade} transparent alphaTest={0.03} toneMapped={false} />
     </mesh>
   );
 }
@@ -583,7 +598,13 @@ function Scene({ engine, head, led, onReady }: Omit<RendererProps, "paused">) {
   const monitorRef = useRef<THREE.Group>(null);
   const frames = useRef(0);
   const bodyLoaded = useRef(false);
-  const angle = useRef({ yaw: HEAD.restYawDeg, pitch: HEAD.restPitchDeg, torso: 0 });
+  const angle = useRef<{ yaw: number; pitch: number; torso: number; roll: number; body: number }>({
+    yaw: HEAD.restYawDeg,
+    pitch: HEAD.restPitchDeg,
+    torso: 0,
+    roll: 0,
+    body: 1,
+  });
   const lastVersion = useRef(-1);
   const updateCables = useRef<(() => void) | null>(null);
   const updateNeck = useRef<(() => void) | null>(null);
@@ -618,23 +639,33 @@ function Scene({ engine, head, led, onReady }: Omit<RendererProps, "paused">) {
   }, []);
 
   const pivotPos = useMemo(() => torsoLocal(at(PIVOT.x, PIVOT.y, 0)), []);
+  /** Height of the collar (where the neck meets the sweater), torso-local. */
+  const collarY = useMemo(() => torsoLocal(at(PIVOT.x, NECK.bottom, 0)).y, []);
 
   useFrame((state, dt) => {
     const now = performance.now();
     const a = angle.current;
     const step = Math.min(dt, 0.1);
+    // the shoulders take a share of the turn away from the pose, plus a little of the pose itself
+    const torsoTarget = (a.yaw - head.yawBias) * TORSO.follow + head.yawBias * TORSO.poseFollow;
     if (head.frozen) {
-      a.yaw = HEAD.restYawDeg;
-      a.pitch = HEAD.restPitchDeg;
-      a.torso = HEAD.restYawDeg * TORSO.follow;
+      a.yaw = head.yaw;
+      a.pitch = head.pitch;
+      a.roll = head.roll;
+      a.body = head.body;
+      a.torso = (head.yaw - head.yawBias) * TORSO.follow + head.yawBias * TORSO.poseFollow;
     } else {
       const k = 1 - Math.exp(-HEAD.damping * step);
       a.yaw += (head.yaw - a.yaw) * k;
       a.pitch += (head.pitch - a.pitch) * k;
+      a.roll += (head.roll - a.roll) * k;
       const kt = 1 - Math.exp(-TORSO.damping * step);
-      a.torso += (a.yaw * TORSO.follow - a.torso) * kt;
+      a.torso += (torsoTarget - a.torso) * kt;
+      // the body grows in step with the slide into State 2
+      const kb = 1 - Math.exp(-TORSO.scaleDamping * step);
+      a.body += (head.body - a.body) * kb;
     }
-    engine.setGaze(a.yaw / HEAD.maxYawDeg, a.pitch / HEAD.maxPitchDeg);
+    engine.setGaze((a.yaw - head.yawBias) / HEAD.maxYawDeg, a.pitch / HEAD.maxPitchDeg);
     if (engine.draw(now) || engine.version !== lastVersion.current) {
       lastVersion.current = engine.version;
       screenTex.needsUpdate = true;
@@ -656,14 +687,23 @@ function Scene({ engine, head, led, onReady }: Omit<RendererProps, "paused">) {
         -torsoYaw * TORSO.roll * DEG,
       );
       torso.current.position.set(TP.x + torsoYaw * TORSO.shift, TP.y + breathe * TORSO.breathe, TP.z);
+      torso.current.scale.setScalar(a.body);
     }
     if (pivot.current) {
       // the head's own turn is what is left after the torso's
       pivot.current.rotation.set(
         (a.pitch * (1 - TORSO.pitchFollow) + nod) * DEG,
         (a.yaw - torsoYaw) * DEG,
-        torsoYaw * TORSO.roll * DEG,
+        (torsoYaw * TORSO.roll + a.roll) * DEG,
         "YXZ",
+      );
+      // a bigger torso must not mean a bigger head, or a longer neck: the head
+      // rides on the collar, which moves with the torso, and keeps its own size
+      pivot.current.scale.setScalar(1 / a.body);
+      pivot.current.position.set(
+        pivotPos.x,
+        (a.body * collarY + (pivotPos.y - collarY)) / a.body,
+        pivotPos.z,
       );
     }
     updateNeck.current?.();

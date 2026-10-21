@@ -1,5 +1,9 @@
 /**
  * Every timing in the hero, in milliseconds unless noted. Tweak here, nowhere else.
+ *
+ * State 2 arrives as one quick sequence, about 2.5s from the click: power-on
+ * and slide (0-0.7s), the four lines type in (0.3-2s), then the main button,
+ * restart and the three cards land together while the card text types.
  * Values come from docs/design/hero-direction.md.
  */
 export const T = {
@@ -11,19 +15,19 @@ export const T = {
 
   // Transition: booting
   powerOn: 280, // scan-line flash
-  bootLineUntil: 700, // boot line visible from powerOn to here
-  slideDelay: 200, // character starts sliding
-  slide: 800, // character slide / scale / turn
+  bootLineUntil: 480, // boot line visible from powerOn to here
+  slideDelay: 0, // character starts sliding
+  slide: 700, // character slide / scale / turn
   restartSlide: 700,
-  firstLineAt: 700, // left column starts typing
+  firstLineAt: 260, // left column starts typing
 
   // Typing
-  perChar: 26,
-  punctuationPause: 160, // extra after . , ? !
-  betweenLines: 350,
+  perChar: 16,
+  punctuationPause: 60, // extra after . , ? !
+  betweenLines: 60,
   pillStagger: 80,
-  bodySpeed: 0.6, // body lines type at this share of the per-character delay
-  cardPerChar: 14, // the three cards type together, this fast
+  bodySpeed: 0.9, // body lines type at this share of the per-character delay
+  cardPerChar: 6, // the three cards type together, this fast
 
   // The "I -> we" glitch
   slipAfter: 650, // pause after the line types, before it slips
@@ -55,7 +59,12 @@ export const HEAD = {
   damping: 2.2, // exponential damping λ; ~450ms to 63% of the way, so it eases rather than snaps
   restYawDeg: 16, // no pointer yet: slightly turned, like the photo
   restPitchDeg: 3,
-  conversationYawBiasDeg: -7, // State 2: leans toward the left column
+  // State 2: an imposing three-quarter pose, turned toward the text, tilted, looking down a little
+  conversationYawBiasDeg: -22,
+  conversationRollDeg: 6,
+  conversationPitchDeg: 5,
+  conversationFollow: 0.4, // share of the cursor-follow range it keeps around that pose
+  conversationBody: 1.38, // torso scale in State 2 (desktop), so the head sits on a big frame
   nodPitchDeg: 8,
   breathePx: 1.5,
 } as const;
@@ -67,6 +76,8 @@ export const TORSO = {
   roll: 0.28, // shoulders dip into the turn
   shift: 0.028, // and slide sideways (world units per degree)
   pitchFollow: 0.32, // and lean in when he looks down
+  poseFollow: 0.25, // share of a pose's built-in turn the shoulders take
+  scaleDamping: 3.2, // how fast the torso grows into State 2
   breathe: 0.035, // ~3.5px
   sway: 0.9, // idle sway of the shoulders, degrees
   swayPeriod: 7400, // ms

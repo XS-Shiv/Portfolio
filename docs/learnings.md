@@ -37,3 +37,7 @@ The flip swaps one pronoun at a time, never a whole sentence, and only after eve
 ## Slimming the monitor
 
 The casing depths in `Crt3D.tsx` were tuned for a 5.0-deep monitor. Jacks, vents and the back-panel cables are placed in absolute depth, so they are scaled by `DS = M.d / 5`; without that, cables float behind a thinner casing.
+
+## Making the head look imposing
+
+Height alone did not do it: the monitor was already taller than in the reference. What reads as "grand" is the frame. In State 2 the torso group scales up (1.38x) while the head's pivot group scales by the inverse, so the shoulders get broad and the head keeps its size. The pivot is also re-positioned so it rides on the collar rather than drifting up with the torso, or a long stretch of neck appears. The cables need no change: their ends live in torso space and their starts in head space. Add a three-quarter turn toward the text, a few degrees of tilt and a slight downward look, and keep the cursor-follow small around that pose. The eyes on the screen look relative to the pose (`yawBias`), not to the front, or they stare off to one side.
