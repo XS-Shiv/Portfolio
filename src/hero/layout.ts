@@ -31,12 +31,27 @@ export function talkBox(vw: number, vh: number): { box: Box; columnTop: number }
     const columnTop = Math.max(box.y + (900 / SRC) * s, vh * 0.36);
     return { box, columnTop };
   }
-  // The machine owns the stage: the monitor is most of the screen's height,
-  // its top near the top edge, a little right of centre, and never closer
-  // than 36% of the width (plus its cables) to the text column. The cards sit on the sweater.
-  const s = Math.min((vh * 0.56) / MONITOR_H, (vw * 0.4) / MONITOR_W);
-  // the cables loop out about 10% of the box past the monitor's left edge
-  const cx = Math.max(vw * 0.62, vw * 0.36 + (s * MONITOR_W) / 2 + s * 0.1);
-  const top = Math.max(vh * 0.045, 24);
+  // The machine is overpowering: as big as the space between the text and the
+  // top-right buttons allows, its top almost touching the top edge.
+  const inset = 40;
+  const pad = inset + vw * 0.02; // matches the top bar's side padding
+  const textEnd = pad + Math.min(vw * 0.3, 480) + 24; // the text column, plus a gap
+  const buttonsStart = vw - pad - 220; // the sound and Let's talk buttons
+  const reach = MONITOR_W + 0.1; // the monitor plus its cables looping out on the left
+
+  // (the 3D monitor draws about 40px below its box top, so these sit a little high)
+  let s = Math.min((vh * 0.62) / MONITOR_H, (buttonsStart - textEnd) / reach);
+  let top = 0;
+  // On narrower screens the buttons squeeze it; drop it just below the top bar
+  // instead, where it can stay big.
+  const below = Math.min((vh * 0.57) / MONITOR_H, (vw - pad - textEnd) / reach);
+  if (below > s * 1.08) {
+    s = below;
+    top = 60;
+  }
+  const right = top < 40 ? buttonsStart : vw - pad;
+  const lo = textEnd + s * (MONITOR_W / 2 + 0.1);
+  const hi = right - (s * MONITOR_W) / 2;
+  const cx = Math.min(Math.max(vw * 0.58, lo), Math.max(lo, hi));
   return { box: place(s, cx, top + (s * MONITOR_H) / 2), columnTop: 0 };
 }
