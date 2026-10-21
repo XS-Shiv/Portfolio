@@ -19,6 +19,10 @@ Everything the site says lives in [`src/hero/content.ts`](src/hero/content.ts): 
 
 The conversation is a small graph. Each entry in `dialogue` has the `lines` the character types and the reply `options` the visitor can pick. To build out a real "work" section later, give the `work` node new lines and options; no component needs to change. An optional `link` shows under a reply once it has typed.
 
+## Change the pictures on the screen
+
+Before anyone clicks, the screen flashes pictures for a few seconds, broadcast in CRT colours with glitches. They are listed in `screen.images` in `src/hero/content.ts`. Put your own photos in `public/screen/` and add their paths there; `pixel:heart`, `pixel:bulb`, `pixel:spark` and `pixel:hi` are built in.
+
 ## Change the timing
 
 Every duration (nudges, typing speed, the slide, blinks, the head's lag) is a named constant in [`src/hero/timings.ts`](src/hero/timings.ts).
