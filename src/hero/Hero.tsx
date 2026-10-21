@@ -5,9 +5,9 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Character, type Box } from "./character/Character";
 import { HEAD_CENTER, SRC } from "./character/geometry";
 import type { HeadControl } from "./character/types";
-import { contact, dialogue, hints, options, screen, site, type DialogueOption } from "./content";
+import { contact, hints, intro, screen, site, status } from "./content";
 import { talkBox } from "./layout";
-import { finalText, initialState, ledOf, progressOf, reducer } from "./machine";
+import { initialState, ledOf, reducer } from "./machine";
 import { flipAt, flipCount } from "./pronouns";
 import { ScreenEngine } from "./screen/engine";
 import { Sound } from "./sound";
@@ -15,10 +15,8 @@ import { EASE, HEAD, T, TAP_SLOP } from "./timings";
 
 const clamp = (v: number, a = -1, b = 1) => Math.min(b, Math.max(a, v));
 const isPunct = (ch: string) => ".,?!".includes(ch);
-const arrive = { duration: 0.26, ease: EASE.arrive };
+const arrive = { duration: 0.3, ease: EASE.arrive };
 const pad = (i: number) => String(i + 1).padStart(2, "0");
-
-type Typed = { id: number; n: number; show: "text" | "slip" | "recovery" };
 
 function useMedia(query: string) {
   const [match, setMatch] = useState(false);
@@ -30,16 +28,6 @@ function useMedia(query: string) {
     return () => m.removeEventListener("change", on);
   }, [query]);
   return match;
-}
-
-/** Text that can be mid-glitch: the slip frame renders with a torn, colour-split copy. */
-function Spoken({ text, glitch }: { text: string; glitch: boolean }) {
-  if (!glitch) return <>{text}</>;
-  return (
-    <span className="glitch" data-text={text}>
-      {text}
-    </span>
-  );
 }
 
 /** Text with one word mid-flip (I <-> we), or plain text when nothing is flipping. */
@@ -57,9 +45,9 @@ function Flip({ text, k }: { text: string; k: number | null }) {
   );
 }
 
-function Arrow() {
+function Arrow({ size = 18 }: { size?: number }) {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden>
       <path
         d="M5 12h13M13 6.5 18.5 12 13 17.5"
         fill="none"
@@ -114,11 +102,11 @@ export default function Hero() {
   const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
   const [paused, setPaused] = useState(false);
   const [panel, setPanel] = useState<"none" | "connect">("none");
-  const [typed, setTyped] = useState<Typed>({ id: -1, n: 0, show: "text" });
+  const [typed, setTyped] = useState<{ id: number; n: number }>({ id: -1, n: 0 });
   const [announce, setAnnounce] = useState("");
   const [flip, setFlip] = useState<{ slot: string; k: number } | null>(null);
   const connectBtn = useRef<HTMLButtonElement>(null);
-  const firstCta = useRef<HTMLElement | null>(null);
+  const mainCta = useRef<HTMLButtonElement>(null);
   const byKey = useRef(false);
 
   const talking = phase === "booting" || phase === "conversation";
@@ -191,60 +179,35 @@ export default function Hero() {
     return () => timers.forEach(clearTimeout);
   }, [phase, engine, reduced]);
 
-  // ---------- typing (with the occasional "I -> we" slip) ----------
+  // ---------- typing: the title, then the subtitle ----------
   const line = transcript[typedUpTo];
   useEffect(() => {
     if (!talking || !line) return;
-    const final = finalText(line);
     if (reduced) {
-      setTyped({ id: line.id, n: final.length, show: line.recovery ? "recovery" : "text" });
-      setAnnounce(final);
+      setTyped({ id: line.id, n: line.text.length });
       dispatch({ type: "LINE_TYPED" });
       return;
     }
+    let n = 0;
     let timer = 0;
-    const later = (fn: () => void, ms: number) => {
-      timer = window.setTimeout(fn, ms);
+    setTyped({ id: line.id, n: 0 });
+    const step = () => {
+      n++;
+      setTyped({ id: line.id, n });
+      if (n < line.text.length) {
+        timer = window.setTimeout(step, T.perChar + (isPunct(line.text[n - 1]) ? T.punctuationPause : 0));
+      } else {
+        engine?.setTalking(false);
+        timer = window.setTimeout(() => dispatch({ type: "LINE_TYPED" }), T.betweenLines);
+      }
     };
-    const typeOut = (text: string, show: Typed["show"], speed: number, done: () => void) => {
-      let n = 0;
-      engine?.setTalking(true);
-      const step = () => {
-        n++;
-        setTyped({ id: line.id, n, show });
-        sound.current?.click();
-        if (n < text.length) {
-          later(step, speed * (T.perChar + (isPunct(text[n - 1]) ? T.punctuationPause : 0)));
-        } else {
-          engine?.setTalking(false);
-          done();
-        }
-      };
-      setTyped({ id: line.id, n: 0, show });
-      step();
-    };
-    const finish = () => {
-      setAnnounce(final);
-      later(() => dispatch({ type: "LINE_TYPED" }), T.betweenLines);
-    };
-    const slip = () => {
-      if (!line.slip) return finish();
-      later(() => {
-        // the machine slips into "we"...
-        setTyped({ id: line.id, n: line.slip!.length, show: "slip" });
-        engine?.glitch(T.slipHold);
-        sound.current?.glitch();
-        // ...then catches itself
-        later(() => {
-          if (line.recovery) typeOut(line.recovery, "recovery", T.slipRetype, finish);
-          else {
-            setTyped({ id: line.id, n: line.text.length, show: "text" });
-            finish();
-          }
-        }, T.slipHold);
-      }, T.slipAfter);
-    };
-    later(() => typeOut(line.text, "text", 1, slip), typedUpTo === 0 ? T.firstLineAt : 180);
+    timer = window.setTimeout(
+      () => {
+        engine?.setTalking(true);
+        step();
+      },
+      typedUpTo === 0 ? T.firstLineAt : 120,
+    );
     return () => {
       clearTimeout(timer);
       engine?.setTalking(false);
@@ -256,69 +219,62 @@ export default function Hero() {
   const textOf = (i: number) => {
     const l = transcript[i];
     if (!l) return "";
-    if (i < typedUpTo) return finalText(l);
-    if (i === typedUpTo && typed.id === l.id) {
-      if (typed.show === "slip") return l.slip ?? l.text;
-      if (typed.show === "recovery") return (l.recovery ?? "").slice(0, typed.n);
-      return l.text.slice(0, typed.n);
-    }
+    if (i < typedUpTo) return l.text;
+    if (i === typedUpTo && typed.id === l.id) return l.text.slice(0, typed.n);
     return "";
   };
-  const n = transcript.length;
-  const prevIdx = n - 2;
-  const curIdx = n - 1;
-  const done = n > 0 && typedUpTo >= n;
-  const slipping = typed.show === "slip" && transcript[typedUpTo]?.id === typed.id;
-  const node = dialogue[state.node];
-  const ctas = node.options.map((id) => options[id]).filter(Boolean);
-  const ctasShown = talking && done;
+  const done = talking && transcript.length > 0 && typedUpTo >= transcript.length;
 
-  // keyboard visitors land on the main call to action whenever the replies appear
   useEffect(() => {
-    if (!ctasShown || !byKey.current) return;
+    if (done) setAnnounce([...intro.lines, ...intro.body].join(" ").replace(/\n/g, " "));
+    else setAnnounce("");
+  }, [done]);
+
+  // keyboard visitors land on the main button once it appears
+  useEffect(() => {
+    if (!done || !byKey.current) return;
     byKey.current = false;
-    const id = window.setTimeout(() => firstCta.current?.focus(), 60);
+    const id = window.setTimeout(() => mainCta.current?.focus(), 60);
     return () => clearTimeout(id);
-  }, [ctasShown, state.node]);
+  }, [done]);
 
   // ---------- the recurring I <-> we flip ----------
   useEffect(() => {
-    if (!ctasShown || reduced) return;
-    const last = transcript[transcript.length - 1];
+    if (!done || reduced) return;
     const slots = [
-      { slot: "current", text: last ? finalText(last) : "", weight: 3 },
-      { slot: "sub", text: node.sub, weight: 2 },
-      ...ctas.map((o) => ({ slot: `cta-${o.id}`, text: o.sub ?? "", weight: 1 })),
+      ...intro.lines.map((text, i) => ({ slot: `line-${i}`, text, weight: 3 })),
+      ...intro.body.map((text, i) => ({ slot: `body-${i}`, text, weight: 2 })),
+      ...intro.cards.map((c) => ({ slot: `card-${c.id}`, text: c.sub, weight: 1 })),
     ].flatMap((s) => {
       const count = flipCount(s.text);
       return count ? Array.from({ length: s.weight }, () => ({ slot: s.slot, count })) : [];
     });
     if (!slots.length) return;
     const timers: number[] = [];
-    const loop = () => {
-      const wait = T.flipEveryMin + Math.random() * (T.flipEveryMax - T.flipEveryMin);
+    const loop = (first: boolean) => {
+      // the first flip comes a little sooner, so a quick visitor still sees one
+      const wait = first ? 2600 : T.flipEveryMin + Math.random() * (T.flipEveryMax - T.flipEveryMin);
       timers.push(
         window.setTimeout(() => {
           const pick = slots[Math.floor(Math.random() * slots.length)];
           setFlip({ slot: pick.slot, k: Math.floor(Math.random() * pick.count) });
           engine?.glitch(300);
+          sound.current?.glitch();
           timers.push(
             window.setTimeout(() => {
               setFlip(null);
-              loop();
+              loop(false);
             }, T.flipHold),
           );
         }, wait),
       );
     };
-    loop();
+    loop(true);
     return () => {
       timers.forEach(clearTimeout);
       setFlip(null);
     };
-    // the slots only change with the node
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctasShown, state.node, reduced, engine]);
+  }, [done, reduced, engine]);
   const flipK = (slot: string) => (flip?.slot === slot ? flip.k : null);
 
   // ---------- head follows the pointer ----------
@@ -402,19 +358,6 @@ export default function Hero() {
     return () => window.removeEventListener("keydown", key);
   }, [phase, panel, start]);
 
-  // ---------- choosing ----------
-  const choose = (opt: DialogueOption, keyboard: boolean) => {
-    if (opt.action === "connect") {
-      setPanel("connect");
-      return;
-    }
-    if (!opt.next) return;
-    byKey.current = keyboard;
-    head.current.nodAt = performance.now();
-    setPanel("none");
-    dispatch({ type: "CHOOSE", option: opt.id });
-  };
-
   const restart = () => dispatch({ type: "RESTART" });
 
   const toggleSound = () => {
@@ -424,68 +367,13 @@ export default function Hero() {
   };
 
   const led = ledOf(state);
-  const progress = progressOf(state);
   const compactTop = talk && talk.columnTop ? `${talk.columnTop}px` : undefined;
-
-  const renderCta = (opt: DialogueOption, i: number) => {
-    const primary = i === 0;
-    const cls = primary ? "cta cta-primary" : "cta cta-minor";
-    const inner = (
-      <>
-        <span className="cta-num" aria-hidden>
-          {pad(i)}
-        </span>
-        <span className="cta-body">
-          <span className="cta-label">{opt.label}</span>
-          {opt.sub && (
-            <span className="cta-sub">
-              <Flip text={opt.sub} k={flipK(`cta-${opt.id}`)} />
-            </span>
-          )}
-        </span>
-        <span className="cta-arrow" aria-hidden>
-          <Arrow />
-        </span>
-      </>
-    );
-    const anim = {
-      initial: { opacity: 0, y: 8 },
-      animate: { opacity: 1, y: 0 },
-      transition: { ...arrive, delay: reduced ? 0 : (i * T.pillStagger) / 1000 },
-    };
-    const ref = primary ? (el: HTMLElement | null) => void (firstCta.current = el) : undefined;
-    if (opt.href) {
-      return (
-        <motion.a
-          key={`${state.node}-${opt.id}`}
-          ref={ref}
-          className={cls}
-          href={opt.href}
-          target={opt.href.startsWith("http") ? "_blank" : undefined}
-          rel="noreferrer"
-          {...anim}
-        >
-          {inner}
-        </motion.a>
-      );
-    }
-    return (
-      <motion.button
-        key={`${state.node}-${opt.id}`}
-        ref={ref}
-        type="button"
-        className={cls}
-        aria-haspopup={opt.action === "connect" ? "dialog" : undefined}
-        onClick={(e) => choose(opt, e.detail === 0)}
-        {...anim}
-      >
-        {inner}
-      </motion.button>
-    );
-  };
-
-  const prevLive = typedUpTo === prevIdx;
-  const curLive = typedUpTo === curIdx;
+  const statusText = phase === "booting" ? status.booting : phase === "conversation" ? status.ready : "";
+  const appear = (i: number) => ({
+    initial: { opacity: 0, y: 10 },
+    animate: { opacity: 1, y: 0 },
+    transition: { ...arrive, delay: reduced ? 0 : i * 0.09 },
+  });
 
   return (
     <LazyMotion features={domAnimation} strict>
@@ -515,6 +403,28 @@ export default function Hero() {
 
         {/* ---------- top bar, every state ---------- */}
         <header className="chrome" data-ui>
+          <AnimatePresence mode="wait">
+            {statusText ? (
+              <motion.p
+                key={statusText}
+                className="chrome-status"
+                aria-hidden
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, transition: { duration: 0.12 } }}
+                transition={{ duration: 0.2 }}
+              >
+                <span className={phase === "conversation" ? "status-dot is-on" : "status-dot"} />
+                <span>
+                  {"> "}
+                  {statusText.replace(/_$/, "")}
+                  {statusText.endsWith("_") && <span className="caret caret-block" />}
+                </span>
+              </motion.p>
+            ) : (
+              <span />
+            )}
+          </AnimatePresence>
 
           <div className="chrome-right">
             <button
@@ -603,63 +513,65 @@ export default function Hero() {
             <motion.section
               className="column"
               data-ui
-              aria-label="Conversation"
+              aria-label="Introduction"
               initial={{ opacity: 1 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeIn" } }}
             >
-              <motion.p
-                key={`sys-${state.node}`}
-                className="line-system"
-                aria-hidden
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.2, delay: reduced ? 0 : 0.1 }}
-              >
-                {"> "}
-                {node.system.replace(/_$/, "")}
-                {node.system.endsWith("_") && <span className="caret caret-block" />}
-              </motion.p>
-
-              <p className={prevLive ? "line-prev is-live" : "line-prev"} aria-hidden>
-                <Spoken text={textOf(prevIdx)} glitch={prevLive && slipping} />
-                {prevLive && !slipping && textOf(prevIdx) && <span className="caret" />}
+              <p className="intro-title" aria-hidden>
+                <Flip text={textOf(0)} k={done ? flipK("line-0") : null} />
+                {typedUpTo === 0 && <span className="caret" />}
+              </p>
+              <p className="intro-subtitle" aria-hidden>
+                <Flip text={textOf(1)} k={done ? flipK("line-1") : null} />
+                {typedUpTo === 1 && <span className="caret" />}
               </p>
 
-              <p className="line-current" aria-hidden>
-                {curLive && slipping ? (
-                  <Spoken text={textOf(curIdx)} glitch />
-                ) : (
-                  <Flip text={textOf(curIdx)} k={done ? flipK("current") : null} />
-                )}
-                {curLive && !slipping && <span className="caret" />}
-              </p>
-
-              <div className="line-sub" aria-hidden>
-                <AnimatePresence mode="wait">
-                  {done && (
-                    <motion.p
-                      key={`sub-${state.node}`}
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, transition: { duration: 0.12 } }}
-                      transition={arrive}
-                    >
-                      <Flip text={node.sub} k={flipK("sub")} />
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              <div className="ctas" role="group" aria-label="Where to next">
-                {ctasShown && (
+              <div className="intro-rest">
+                {done && (
                   <>
-                    {ctas[0] && renderCta(ctas[0], 0)}
-                    {ctas.length > 1 && <div className="cta-minors">{ctas.slice(1).map((o, i) => renderCta(o, i + 1))}</div>}
+                    {intro.body.map((text, i) => (
+                      <motion.p key={i} className="intro-body" aria-hidden {...appear(i)}>
+                        <Flip text={text} k={flipK(`body-${i}`)} />
+                      </motion.p>
+                    ))}
+                    {/* does nothing yet: the work section comes later */}
+                    <motion.button ref={mainCta} type="button" className="cta-main" {...appear(2)}>
+                      {intro.primary}
+                      <Arrow size={20} />
+                    </motion.button>
                   </>
                 )}
               </div>
             </motion.section>
+          )}
+        </AnimatePresence>
+
+        {/* the three ways in; they do nothing yet */}
+        <AnimatePresence>
+          {done && (
+            <motion.div
+              className="cards"
+              data-ui
+              role="group"
+              aria-label="Explore"
+              exit={{ opacity: 0, transition: { duration: 0.18 } }}
+            >
+              {intro.cards.map((c, i) => (
+                <motion.button key={c.id} type="button" className="card" {...appear(3 + i)}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img className="card-img" src={c.image} alt="" draggable={false} />
+                  <span className="card-label">{c.label}</span>
+                  <span className="card-sub">
+                    <Flip text={c.sub} k={flipK(`card-${c.id}`)} />
+                  </span>
+                  <span className="card-foot" aria-hidden>
+                    <span className="card-num">{pad(i)}</span>
+                    <Arrow size={16} />
+                  </span>
+                </motion.button>
+              ))}
+            </motion.div>
           )}
         </AnimatePresence>
 
@@ -689,21 +601,8 @@ export default function Hero() {
           )}
         </AnimatePresence>
 
-        <div
-          className="progress"
-          role="progressbar"
-          aria-label={hints.progress}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(progress * 100)}
-          data-visible={talking ? "on" : "off"}
-        >
-          <span style={{ transform: `scaleX(${progress})` }} />
-        </div>
-
         <div className="sr-only" role="status" aria-live="polite">
           {announce}
-          {done ? ` ${node.sub}` : ""}
         </div>
       </main>
     </LazyMotion>
