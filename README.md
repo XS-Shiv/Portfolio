@@ -15,7 +15,7 @@ No environment variables are needed.
 
 ## Change the words
 
-Everything the site says lives in [`src/hero/content.ts`](src/hero/content.ts): the status line, the contact links, the screen text and the State 2 introduction (title, subtitle, body lines, the main button and the three cards).
+Everything the site says lives in [`src/hero/content.ts`](src/hero/content.ts): the status line, the contact links, the screen text and the State 2 introduction (title, subtitle, body lines, the main button and the three cards). All of it types in like a typewriter: the title, subtitle and body one after another, then the three cards together. The copy has no full stops on purpose.
 
 For now the "View my work" button and the three cards do nothing when clicked. They are real buttons, so wiring them to sections later only needs an `onClick` in `Hero.tsx`.
 
@@ -51,7 +51,7 @@ Add `?nowebgl` to the URL to see the photo fallback that browsers without WebGL 
 | `src/hero/screen/engine.ts` | Draws the monitor screen live on a canvas: stars, text, caret, flicker, power-on, the face |
 | `src/hero/character/Character.tsx` | The one `<Character />` interface: photo first, then the 3D head |
 | `src/hero/character/Crt3D.tsx` | The procedural 3D monitor (React Three Fiber). Swap for a GLB here |
-| `src/hero/sound.ts` | Quiet generative background music (slow chords, soft reverb, the odd bell), plus a soft power-on swell and a faint glitch crackle. Off until the top-bar speaker is pressed |
+| `src/hero/sound.ts` | A soft, slow instrumental synthesised live (electric-piano arpeggio, round bass, faint pad, a few melody notes, soft reverb), plus a soft power-on swell and a faint glitch crackle. Off until the top-bar speaker is pressed |
 | `scripts/make_plates.py` | Rebuilds `public/character/body.*` and `front-blank.*` from `front.png` |
 
 Details: [requirements](docs/plans/2026-10-20-1931-feat-crt-hero-plan.md), [visual direction](docs/design/hero-direction.md), [lessons learned](docs/learnings.md).
