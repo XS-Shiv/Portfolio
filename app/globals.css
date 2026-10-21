@@ -10,8 +10,8 @@
   --color-ink-faded: #4f4f4f;
   --color-led: #2f6bff;
   --color-paper: #ededed;
-  --font-sans: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "Archivo Variable", "Archivo", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @property --fade {
@@ -219,39 +219,15 @@ body {
   display: flex;
   white-space: nowrap;
   align-items: center;
-  gap: 10px;
   margin: 0;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-weight: 300;
+  font-size: 12px;
   line-height: 1;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #1d1d1d;
   pointer-events: none !important;
-}
-
-.status-dot {
-  width: 9px;
-  height: 9px;
-  margin-right: 6px;
-  border-radius: 999px;
-  background: #8a8f99;
-}
-
-.status-dot.is-on {
-  background: #5fb6ff;
-  box-shadow:
-    0 0 0 3px rgba(95, 182, 255, 0.22),
-    0 0 10px 2px rgba(47, 140, 255, 0.7);
-  animation: pulse 2.4s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  50% {
-    box-shadow:
-      0 0 0 5px rgba(95, 182, 255, 0.12),
-      0 0 14px 3px rgba(47, 140, 255, 0.5);
-  }
 }
 
 .chrome-right {
@@ -299,8 +275,9 @@ body {
   background: var(--color-ink);
   color: var(--color-paper);
   font: inherit;
-  font-size: 17px;
-  letter-spacing: -0.015em;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   line-height: 1;
   cursor: pointer;
   overflow: hidden;
@@ -404,11 +381,6 @@ body {
     letter-spacing: 0.03em;
     gap: 4px;
   }
-  .status-dot {
-    width: 7px;
-    height: 7px;
-    margin-right: 4px;
-  }
   .chrome-right {
     gap: 10px;
   }
@@ -505,82 +477,102 @@ body {
 .column {
   position: absolute;
   left: calc(var(--inset) + 2vw);
-  width: min(38vw, 560px);
-  top: clamp(110px, 33dvh, 340px);
+  width: min(30vw, 480px);
+  top: clamp(110px, 32dvh, 330px);
   z-index: 4;
 }
 
+/* typewriter lines: the invisible full copy holds the space, the typed copy sits on top */
+.typed {
+  display: inline-grid;
+}
+
+.typed > span {
+  grid-area: 1 / 1;
+}
+
+.typed-ghost {
+  visibility: hidden;
+}
+
+/* The headline is the machine's nameplate: Archivo, a little expanded. */
 .intro-title {
   margin: 0;
-  min-height: 1.05em;
-  font-size: clamp(44px, 4.9vw, 82px);
-  font-weight: 600;
+  font-size: clamp(40px, 3.9vw, 66px);
+  font-weight: 620;
+  font-stretch: 112%;
   line-height: 1.02;
-  letter-spacing: -0.045em;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
   user-select: text;
   -webkit-user-select: text;
 }
 
 .intro-subtitle {
-  margin: 6px 0 0;
-  min-height: 1.1em;
-  font-size: clamp(30px, 3vw, 50px);
-  font-weight: 400;
+  margin: 8px 0 0;
+  font-size: clamp(26px, 2.5vw, 42px);
+  font-weight: 380;
   line-height: 1.1;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.03em;
   color: #6a6a6a;
 }
 
-.intro-rest {
-  min-height: 210px;
+.intro-body {
+  margin-top: 30px;
 }
 
-.intro-body {
+.intro-body p {
   margin: 0;
-  max-width: 34em;
-  font-size: clamp(16px, 1.25vw, 20px);
+}
+
+/* the machine's line, larger; the human's aside, small and tucked under it */
+.intro-lead {
+  max-width: 18em;
+  font-size: clamp(19px, 1.62vw, 26px);
+  font-weight: 420;
+  line-height: 1.28;
+  letter-spacing: -0.02em;
+  color: #2a2a2a;
+}
+
+.intro-aside {
+  margin-top: 8px !important;
+  font-size: clamp(14px, 1.05vw, 16px);
   line-height: 1.45;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
   color: var(--color-ink-muted);
 }
 
-.intro-body:first-child {
-  margin-top: 26px;
-}
-
-.intro-body + .intro-body {
-  margin-top: 14px;
-}
-
 @media (min-width: 760px) {
-  .intro-body {
+  .intro-aside {
     white-space: pre-line;
   }
+}
+
+.cta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 38px;
+  min-height: 60px;
 }
 
 .cta-main {
   display: inline-flex;
   align-items: center;
   gap: 14px;
-  margin-top: 40px;
-  height: 64px;
-  padding: 0 32px 0 36px;
+  height: 60px;
+  padding: 0 30px 0 34px;
   border: 0;
   border-radius: 999px;
-  background: #0b0c0f;
+  background: #000;
   color: #f2f2f2;
   font: inherit;
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 500;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.01em;
   cursor: pointer;
-  box-shadow:
-    0 0 0 1px rgba(90, 150, 255, 0.35),
-    0 0 26px -2px rgba(47, 107, 255, 0.55),
-    0 14px 30px -14px rgba(0, 0, 0, 0.6);
-  transition:
-    transform 0.25s var(--ease-arrive),
-    box-shadow 0.25s;
+  transition: background-color 0.2s;
 }
 
 .cta-main svg {
@@ -588,11 +580,7 @@ body {
 }
 
 .cta-main:hover {
-  transform: translateY(-1px);
-  box-shadow:
-    0 0 0 1px rgba(90, 150, 255, 0.5),
-    0 0 34px 0 rgba(47, 107, 255, 0.65),
-    0 18px 34px -14px rgba(0, 0, 0, 0.6);
+  background: #1c1c1c;
 }
 
 .cta-main:hover svg {
@@ -776,40 +764,43 @@ body {
     right: var(--inset);
     width: auto;
     top: var(--column-top, 36dvh);
-    bottom: calc(var(--inset) + 186px);
+    bottom: calc(var(--inset) + 140px);
     overflow-y: auto;
     touch-action: pan-y;
     scrollbar-width: none;
   }
   .intro-title {
-    font-size: 40px;
+    font-size: 36px;
   }
   .intro-subtitle {
     margin-top: 2px;
-    font-size: 26px;
-  }
-  .intro-rest {
-    min-height: 0;
+    font-size: 24px;
   }
   .intro-body {
-    font-size: 15px;
-  }
-  .intro-body:first-child {
     margin-top: 14px;
   }
-  .intro-body + .intro-body {
-    margin-top: 8px;
+  .intro-lead {
+    font-size: 17px;
+  }
+  .intro-aside {
+    margin-top: 4px !important;
+    font-size: 13.5px;
+  }
+  .cta-row {
+    margin-top: 18px;
+    gap: 10px;
+    min-height: 50px;
   }
   .cta-main {
-    margin-top: 18px;
     height: 50px;
     padding: 0 22px 0 26px;
     font-size: 16px;
   }
+
   .cards {
     left: 0;
     right: 0;
-    bottom: calc(var(--inset) + 56px);
+    bottom: var(--inset);
     padding: 0 var(--inset);
     gap: 10px;
     overflow-x: auto;
@@ -838,37 +829,45 @@ body {
   }
 }
 
-.controls {
-  position: absolute;
-  inset: auto auto var(--inset) calc(var(--inset) + 2vw);
-  z-index: 4;
-}
-
-@media (max-width: 759px), (max-aspect-ratio: 3/4) {
-  .controls {
-    left: var(--inset);
-  }
-}
-
 .restart {
-  width: 46px;
-  height: 46px;
-  border-radius: 999px;
+  flex: none;
+  width: 60px;
+  height: 60px;
+  aspect-ratio: 1;
+  border-radius: 50%;
   border: 0;
-  background: var(--color-ink);
+  padding: 0;
+  background: #000;
   color: var(--color-paper);
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: transform 0.2s var(--ease-arrive);
+  transition:
+    transform 0.25s var(--ease-arrive),
+    background-color 0.2s;
 }
 
 .restart:hover {
+  background: #1c1c1c;
+}
+
+.restart:hover svg {
   transform: rotate(-40deg);
 }
 
+.restart svg {
+  transition: transform 0.25s var(--ease-arrive);
+}
+
 .restart:focus-visible {
-  border-radius: 999px;
+  border-radius: 50%;
+}
+
+@media (max-width: 759px), (max-aspect-ratio: 3/4) {
+  .restart {
+    width: 50px;
+    height: 50px;
+  }
 }
 
 /* ---------- reduced motion ---------- */
@@ -876,7 +875,6 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .character-breathe,
   .caret,
-  .status-dot.is-on,
   .glitch,
   .glitch::before,
   .glitch::after,

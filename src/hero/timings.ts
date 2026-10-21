@@ -22,6 +22,8 @@ export const T = {
   punctuationPause: 160, // extra after . , ? !
   betweenLines: 350,
   pillStagger: 80,
+  bodySpeed: 0.6, // body lines type at this share of the per-character delay
+  cardPerChar: 14, // the three cards type together, this fast
 
   // The "I -> we" glitch
   slipAfter: 650, // pause after the line types, before it slips

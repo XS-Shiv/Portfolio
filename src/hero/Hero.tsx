@@ -45,6 +45,24 @@ function Flip({ text, k }: { text: string; k: number | null }) {
   );
 }
 
+/**
+ * A typewriter line that never shifts the layout: an invisible copy of the full
+ * text holds the space, and the typed part is drawn on top of it.
+ */
+function Typed({ full, shown, k, caret }: { full: string; shown: string; k: number | null; caret?: boolean }) {
+  return (
+    <span className="typed">
+      <span className="typed-ghost" aria-hidden>
+        {full}
+      </span>
+      <span className="typed-live">
+        {shown === full ? <Flip text={full} k={k} /> : shown}
+        {caret && <span className="caret" />}
+      </span>
+    </span>
+  );
+}
+
 function Arrow({ size = 18 }: { size?: number }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden>
@@ -105,6 +123,7 @@ export default function Hero() {
   const [typed, setTyped] = useState<{ id: number; n: number }>({ id: -1, n: 0 });
   const [announce, setAnnounce] = useState("");
   const [flip, setFlip] = useState<{ slot: string; k: number } | null>(null);
+  const [cardChars, setCardChars] = useState(0);
   const connectBtn = useRef<HTMLButtonElement>(null);
   const mainCta = useRef<HTMLButtonElement>(null);
   const byKey = useRef(false);
@@ -179,7 +198,7 @@ export default function Hero() {
     return () => timers.forEach(clearTimeout);
   }, [phase, engine, reduced]);
 
-  // ---------- typing: the title, then the subtitle ----------
+  // ---------- typing: title, subtitle, then the body lines (a little faster) ----------
   const line = transcript[typedUpTo];
   useEffect(() => {
     if (!talking || !line) return;
@@ -195,7 +214,11 @@ export default function Hero() {
       n++;
       setTyped({ id: line.id, n });
       if (n < line.text.length) {
-        timer = window.setTimeout(step, T.perChar + (isPunct(line.text[n - 1]) ? T.punctuationPause : 0));
+        const speed = typedUpTo >= intro.lines.length ? T.bodySpeed : 1;
+        timer = window.setTimeout(
+          step,
+          speed * (T.perChar + (isPunct(line.text[n - 1]) ? T.punctuationPause : 0)),
+        );
       } else {
         engine?.setTalking(false);
         timer = window.setTimeout(() => dispatch({ type: "LINE_TYPED" }), T.betweenLines);
@@ -225,8 +248,29 @@ export default function Hero() {
   };
   const done = talking && transcript.length > 0 && typedUpTo >= transcript.length;
 
+  // the cards type in together once the body has finished
+  const cardLen = Math.max(...intro.cards.map((c) => c.label.length + c.sub.length));
   useEffect(() => {
-    if (done) setAnnounce([...intro.lines, ...intro.body].join(" ").replace(/\n/g, " "));
+    if (!done) {
+      setCardChars(0);
+      return;
+    }
+    if (reduced) {
+      setCardChars(cardLen);
+      return;
+    }
+    let n = 0;
+    const id = window.setInterval(() => {
+      n += 1;
+      setCardChars(n);
+      if (n >= cardLen) clearInterval(id);
+    }, T.cardPerChar);
+    return () => clearInterval(id);
+  }, [done, reduced, cardLen]);
+  const allDone = done && cardChars >= cardLen;
+
+  useEffect(() => {
+    if (done) setAnnounce([...intro.lines, ...intro.body].join(". ").replace(/\n/g, " "));
     else setAnnounce("");
   }, [done]);
 
@@ -240,7 +284,7 @@ export default function Hero() {
 
   // ---------- the recurring I <-> we flip ----------
   useEffect(() => {
-    if (!done || reduced) return;
+    if (!allDone || reduced) return;
     const slots = [
       ...intro.lines.map((text, i) => ({ slot: `line-${i}`, text, weight: 3 })),
       ...intro.body.map((text, i) => ({ slot: `body-${i}`, text, weight: 2 })),
@@ -274,7 +318,7 @@ export default function Hero() {
       timers.forEach(clearTimeout);
       setFlip(null);
     };
-  }, [done, reduced, engine]);
+  }, [allDone, reduced, engine]);
   const flipK = (slot: string) => (flip?.slot === slot ? flip.k : null);
 
   // ---------- head follows the pointer ----------
@@ -414,7 +458,6 @@ export default function Hero() {
                 exit={{ opacity: 0, transition: { duration: 0.12 } }}
                 transition={{ duration: 0.2 }}
               >
-                <span className={phase === "conversation" ? "status-dot is-on" : "status-dot"} />
                 <span>
                   {"> "}
                   {statusText.replace(/_$/, "")}
@@ -519,26 +562,47 @@ export default function Hero() {
               exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeIn" } }}
             >
               <p className="intro-title" aria-hidden>
-                <Flip text={textOf(0)} k={done ? flipK("line-0") : null} />
-                {typedUpTo === 0 && <span className="caret" />}
+                <Typed full={intro.lines[0]} shown={textOf(0)} k={flipK("line-0")} caret={typedUpTo === 0} />
               </p>
               <p className="intro-subtitle" aria-hidden>
-                <Flip text={textOf(1)} k={done ? flipK("line-1") : null} />
-                {typedUpTo === 1 && <span className="caret" />}
+                <Typed full={intro.lines[1]} shown={textOf(1)} k={flipK("line-1")} caret={typedUpTo === 1} />
               </p>
+              <div className="intro-body">
+                {intro.body.map((text, j) => {
+                  const i = intro.lines.length + j;
+                  return (
+                    <p key={j} className={j === 0 ? "intro-lead" : "intro-aside"} aria-hidden>
+                      <Typed full={text} shown={textOf(i)} k={flipK(`body-${j}`)} caret={typedUpTo === i} />
+                    </p>
+                  );
+                })}
+              </div>
 
-              <div className="intro-rest">
+              <div className="cta-row">
                 {done && (
                   <>
-                    {intro.body.map((text, i) => (
-                      <motion.p key={i} className="intro-body" aria-hidden {...appear(i)}>
-                        <Flip text={text} k={flipK(`body-${i}`)} />
-                      </motion.p>
-                    ))}
                     {/* does nothing yet: the work section comes later */}
-                    <motion.button ref={mainCta} type="button" className="cta-main" {...appear(2)}>
+                    <motion.button ref={mainCta} type="button" className="cta-main" {...appear(0)}>
                       {intro.primary}
                       <Arrow size={20} />
+                    </motion.button>
+                    <motion.button
+                      type="button"
+                      className="restart"
+                      onClick={restart}
+                      aria-label={hints.restart}
+                      {...appear(1)}
+                    >
+                      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
+                        <path
+                          d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4v4.5H9"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
                     </motion.button>
                   </>
                 )}
@@ -558,12 +622,18 @@ export default function Hero() {
               exit={{ opacity: 0, transition: { duration: 0.18 } }}
             >
               {intro.cards.map((c, i) => (
-                <motion.button key={c.id} type="button" className="card" {...appear(3 + i)}>
+                <motion.button key={c.id} type="button" className="card" {...appear(i)}>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img className="card-img" src={c.image} alt="" draggable={false} />
-                  <span className="card-label">{c.label}</span>
+                  <span className="card-label">
+                    <Typed full={c.label} shown={c.label.slice(0, cardChars)} k={null} />
+                  </span>
                   <span className="card-sub">
-                    <Flip text={c.sub} k={flipK(`card-${c.id}`)} />
+                    <Typed
+                      full={c.sub}
+                      shown={c.sub.slice(0, Math.max(0, cardChars - c.label.length))}
+                      k={flipK(`card-${c.id}`)}
+                    />
                   </span>
                   <span className="card-foot" aria-hidden>
                     <span className="card-num">{pad(i)}</span>
@@ -571,32 +641,6 @@ export default function Hero() {
                   </span>
                 </motion.button>
               ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {talking && (
-            <motion.div
-              className="controls"
-              data-ui
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, transition: { duration: 0.18 } }}
-              transition={{ ...arrive, delay: reduced ? 0 : 0.8 }}
-            >
-              <button type="button" className="restart" onClick={restart} aria-label={hints.restart}>
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
-                  <path
-                    d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4v4.5H9"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
             </motion.div>
           )}
         </AnimatePresence>

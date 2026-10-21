@@ -31,9 +31,12 @@ export function talkBox(vw: number, vh: number): { box: Box; columnTop: number }
     const columnTop = Math.max(box.y + (900 / SRC) * s, vh * 0.36);
     return { box, columnTop };
   }
-  // stays big, like State 1, and steps to the right of the conversation
-  const idle = idleBox(vw, vh);
-  // big and a little right of centre, head up high; the cards sit on the sweater
-  const s = idle.s * 1.04;
-  return { box: place(s, vw * 0.6, vh * 0.4), columnTop: 0 };
+  // The machine owns the stage: the monitor is most of the screen's height,
+  // its top near the top edge, a little right of centre, and never closer
+  // than 36% of the width (plus its cables) to the text column. The cards sit on the sweater.
+  const s = Math.min((vh * 0.56) / MONITOR_H, (vw * 0.4) / MONITOR_W);
+  // the cables loop out about 10% of the box past the monitor's left edge
+  const cx = Math.max(vw * 0.62, vw * 0.36 + (s * MONITOR_W) / 2 + s * 0.1);
+  const top = Math.max(vh * 0.045, 24);
+  return { box: place(s, cx, top + (s * MONITOR_H) / 2), columnTop: 0 };
 }

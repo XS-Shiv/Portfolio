@@ -1,7 +1,5 @@
-import "@fontsource/ibm-plex-mono/400.css";
-import "@fontsource/inter-tight/400.css";
-import "@fontsource/inter-tight/500.css";
-import "@fontsource/inter-tight/600.css";
+import "@fontsource-variable/archivo/wdth.css";
+import "@fontsource/martian-mono/300.css";
 import "@fontsource/vt323/400.css";
 import "./globals.css";
 import type { Metadata, Viewport } from "next";

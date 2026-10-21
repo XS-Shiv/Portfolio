@@ -1,8 +1,10 @@
 /**
  * All words on the hero live here. Edit freely; no component needs to change.
  *
- * State 2 reads top to bottom: a status line in the top bar, the title and
- * subtitle (typed), two short body lines, one main button and three cards.
+ * State 2 reads top to bottom: a status line in the top bar, the title,
+ * subtitle and two body lines (all typed in, one after another), one main
+ * button with the restart button beside it, and three cards that type in
+ * together. No full stops: the lines read like spoken fragments.
  * The buttons and cards do nothing yet; they will open sections later.
  *
  * Every few seconds, once everything has appeared, one pronoun in the visible
@@ -61,30 +63,30 @@ export const status = {
 
 export const intro = {
   /** Typed in order: the title, then the subtitle. */
-  lines: ["Hey, I'm Shiv.", "This is my portfolio."],
+  lines: ["Hey, I'm Shiv", "This is my portfolio"],
   body: [
-    "The machine would like you to believe it had more input.",
+    "The machine would like you to believe it had more input",
     // "\n" sets where the line breaks on wide screens
-    "I let it handle the introduction. In hindsight,\nthat was generous.",
+    "I let it handle the introduction,\nin hindsight that was generous",
   ],
   primary: "View my work",
   cards: [
     {
       id: "situation",
       label: "The human-machine situation",
-      sub: "Things I built with AI. Or things we built.",
+      sub: "Things I built with AI, or things we built",
       image: "/screen/three-quarter.webp",
     },
     {
       id: "behind",
       label: "Who's behind the screen?",
-      sub: "The original human. Last time I checked.",
+      sub: "The original human, last time I checked",
       image: "/screen/side.webp",
     },
     {
       id: "thoughts",
       label: "Thoughts from the machine",
-      sub: "My thoughts, mostly. We think.",
+      sub: "My thoughts, mostly (we think)",
       image: "/screen/back.webp",
     },
   ] as Card[],

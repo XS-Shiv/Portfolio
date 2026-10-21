@@ -7,7 +7,7 @@ export type Line = { id: number; text: string };
 
 export type HeroState = {
   phase: Phase;
-  /** The lines typed in State 2, oldest first. */
+  /** Every line typed in State 2, in order: title, subtitle, body lines. */
   transcript: Line[];
   /** Index into transcript of the first line not yet fully typed. */
   typedUpTo: number;
@@ -30,7 +30,7 @@ export function reducer(state: HeroState, event: HeroEvent): HeroState {
       if (state.phase !== "idle") return state;
       return {
         phase: "booting",
-        transcript: intro.lines.map((text) => ({ id: ++lineId, text })),
+        transcript: [...intro.lines, ...intro.body].map((text) => ({ id: ++lineId, text })),
         typedUpTo: 0,
       };
     case "BOOT_DONE":

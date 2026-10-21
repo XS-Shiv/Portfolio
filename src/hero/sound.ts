@@ -1,24 +1,41 @@
 /**
  * Tiny synthesised sounds, no audio files. Silent until the visitor turns sound on.
  *
- * When on, the only thing you really hear is soft background music: slow,
- * warm chords that drift through a dark reverb, with the odd faint bell on
- * top. It sits far back in the mix. The power-on and glitch sounds are kept
- * very quiet, and typing makes no sound at all.
+ * When on, the only thing you really hear is a slow, soft instrumental: a warm
+ * electric-piano arpeggio over a gentle IV-iii-ii-I progression, a round bass
+ * note on each bar, a faint pad underneath and a few high melody notes, all in
+ * a soft reverb and kept far back in the mix. The power-on and glitch sounds
+ * are very quiet, and typing makes no sound at all.
  */
 
-/** Four gentle chords (Hz), low and close together, each held for one bar. */
-const CHORDS = [
-  [130.81, 196.0, 246.94, 329.63], // Cmaj7
-  [110.0, 164.81, 220.0, 261.63], // Am7
-  [87.31, 174.61, 220.0, 261.63], // Fmaj7
-  [98.0, 146.83, 196.0, 246.94], // G6-ish
-];
-/** C major pentatonic, two octaves up, for the occasional bell. */
-const BELLS = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
+const BPM = 66;
+const BEAT = 60 / BPM;
+const BAR = BEAT * 4;
+const LEVEL = 0.05; // master volume of the music
 
-const BAR = 9; // seconds per chord
-const LEVEL = 0.03; // master volume of the music
+/** Fmaj7 - Em7 - Dm7 - Cmaj9, as MIDI notes: [bass, ...chord]. */
+const PROGRESSION = [
+  [41, 53, 57, 60, 64],
+  [40, 52, 55, 59, 62],
+  [38, 50, 53, 57, 60],
+  [36, 48, 52, 55, 59, 62],
+];
+/** The arpeggio walks these chord-tone positions on eighth notes; 12 = an octave up. */
+const ARP: [number, number][] = [
+  [0, 0],
+  [1, 0],
+  [2, 0],
+  [3, 0],
+  [1, 12],
+  [2, 0],
+  [3, 0],
+  [2, 0],
+];
+/** C major pentatonic, up high, for the odd melody note. */
+const MELODY = [72, 74, 76, 79, 81];
+
+const hz = (midi: number) => 440 * Math.pow(2, (midi - 69) / 12);
+const jitter = (amount: number) => (Math.random() * 2 - 1) * amount;
 
 export class Sound {
   enabled = false;
@@ -43,13 +60,13 @@ export class Sound {
     else this.stopMusic();
   }
 
-  /** A long, dark reverb tail, generated: decaying noise as the impulse response. */
+  /** A soft room reverb, generated: decaying noise as the impulse response. */
   private reverb(ac: AudioContext) {
-    const len = Math.floor(ac.sampleRate * 4.5);
+    const len = Math.floor(ac.sampleRate * 3.2);
     const ir = ac.createBuffer(2, len, ac.sampleRate);
     for (let ch = 0; ch < 2; ch++) {
       const d = ir.getChannelData(ch);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.8);
     }
     const conv = ac.createConvolver();
     conv.buffer = ir;
@@ -63,87 +80,101 @@ export class Sound {
 
     const out = ac.createGain();
     out.gain.setValueAtTime(0, t);
-    out.gain.linearRampToValueAtTime(LEVEL, t + 4);
+    out.gain.linearRampToValueAtTime(LEVEL, t + 3);
     out.connect(ac.destination);
 
-    // everything goes through a soft low-pass, then mostly into the reverb
+    // a warm tone: roll off the top, then mix dry with a soft room
     const tone = ac.createBiquadFilter();
     tone.type = "lowpass";
-    tone.frequency.value = 1400;
-    tone.Q.value = 0.3;
+    tone.frequency.value = 2400;
+    tone.Q.value = 0.4;
     const dry = ac.createGain();
-    dry.gain.value = 0.45;
+    dry.gain.value = 0.7;
     const wet = ac.createGain();
-    wet.gain.value = 0.9;
+    wet.gain.value = 0.55;
     tone.connect(dry).connect(out);
     tone.connect(this.reverb(ac)).connect(wet).connect(out);
 
-    const music = { out, timer: 0, next: t + 0.1, bar: 0 };
+    const music = { out, timer: 0, next: t + 0.2, bar: 0 };
     this.music = music;
 
-    // schedule a little ahead, so timers never cause gaps
+    // schedule a few seconds ahead, so timers never cause gaps
     const tick = () => {
       if (this.music !== music) return;
-      while (music.next < ac.currentTime + 2) {
-        this.chord(ac, tone, CHORDS[music.bar % CHORDS.length], music.next);
-        // a faint bell or two somewhere in the bar, not every time
-        const bells = Math.random() < 0.6 ? 1 : 2;
-        for (let i = 0; i < bells; i++) {
-          if (Math.random() < 0.75) {
-            const f = BELLS[Math.floor(Math.random() * BELLS.length)];
-            this.bell(ac, tone, f, music.next + 1.5 + Math.random() * (BAR - 3));
-          }
-        }
+      while (music.next < ac.currentTime + 3) {
+        this.bar(ac, tone, music.bar, music.next);
         music.next += BAR;
         music.bar++;
       }
     };
     tick();
-    music.timer = window.setInterval(tick, 1000);
+    music.timer = window.setInterval(tick, 500);
   }
 
-  /** A chord that swells in slowly and fades out slowly, overlapping the next. */
-  private chord(ac: AudioContext, bus: AudioNode, notes: number[], at: number) {
-    const hold = BAR + 3;
-    for (const [i, f] of notes.entries()) {
-      const g = ac.createGain();
-      const peak = (i === 0 ? 0.22 : 0.14) / notes.length;
-      g.gain.setValueAtTime(0, at);
-      g.gain.linearRampToValueAtTime(peak, at + 3.5);
-      g.gain.setValueAtTime(peak, at + hold - 4.5);
-      g.gain.linearRampToValueAtTime(0, at + hold);
-      g.connect(bus);
-      // a sine and a quiet triangle, slightly detuned, for warmth
-      for (const [type, detune, level] of [
-        ["sine", -3, 1],
-        ["triangle", 4, 0.25],
-      ] as const) {
-        const o = ac.createOscillator();
-        o.type = type;
-        o.frequency.value = f;
-        o.detune.value = detune;
-        const og = ac.createGain();
-        og.gain.value = level;
-        o.connect(og).connect(g);
-        o.start(at);
-        o.stop(at + hold + 0.1);
+  private bar(ac: AudioContext, bus: AudioNode, n: number, at: number) {
+    const [bass, ...chord] = PROGRESSION[n % PROGRESSION.length];
+    // the first pass of the cycle breathes in quarter notes; after that, eighths
+    const eighths = n >= PROGRESSION.length;
+    this.piano(ac, bus, bass, at, 0.55, 3.2);
+    this.pad(ac, bus, chord, at);
+    ARP.forEach(([pos, up], i) => {
+      if (!eighths && i % 2) return;
+      const note = chord[pos % chord.length] + up;
+      const when = at + i * (BEAT / 2) + jitter(0.012);
+      this.piano(ac, bus, note, when, (i === 0 ? 0.42 : 0.32) + jitter(0.06), 1.6);
+    });
+    // a few melody notes on every other bar
+    if (n % 2 === 1) {
+      const count = 1 + Math.floor(Math.random() * 2);
+      for (let k = 0; k < count; k++) {
+        const note = MELODY[Math.floor(Math.random() * MELODY.length)];
+        this.piano(ac, bus, note, at + BEAT * (1 + k * 1.5) + jitter(0.02), 0.22 + jitter(0.04), 2.4);
       }
     }
   }
 
-  /** A soft, distant bell: quick attack, long fade, mostly reverb. */
-  private bell(ac: AudioContext, bus: AudioNode, f: number, at: number) {
+  /** A soft electric-piano note: a few sine partials, a quick attack and a natural fade. */
+  private piano(ac: AudioContext, bus: AudioNode, midi: number, at: number, vel: number, decay: number) {
+    const f = hz(midi);
     const g = ac.createGain();
     g.gain.setValueAtTime(0, at);
-    g.gain.linearRampToValueAtTime(0.028, at + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, at + 3.5);
+    g.gain.linearRampToValueAtTime(vel * 0.16, at + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + decay);
     g.connect(bus);
-    const o = ac.createOscillator();
-    o.type = "sine";
-    o.frequency.value = f;
-    o.connect(g);
-    o.start(at);
-    o.stop(at + 3.6);
+    for (const [mult, level, fade] of [
+      [1, 1, 1],
+      [2, 0.28, 0.6],
+      [3, 0.08, 0.35],
+      [4.02, 0.03, 0.25],
+    ] as const) {
+      const o = ac.createOscillator();
+      o.type = "sine";
+      o.frequency.value = f * mult;
+      const pg = ac.createGain();
+      pg.gain.setValueAtTime(level, at);
+      pg.gain.exponentialRampToValueAtTime(0.0001, at + decay * fade);
+      o.connect(pg).connect(g);
+      o.start(at);
+      o.stop(at + decay + 0.05);
+    }
+  }
+
+  /** A faint sustained chord underneath, swelling in and out with the bar. */
+  private pad(ac: AudioContext, bus: AudioNode, chord: number[], at: number) {
+    const g = ac.createGain();
+    g.gain.setValueAtTime(0, at);
+    g.gain.linearRampToValueAtTime(0.012, at + 1.2);
+    g.gain.linearRampToValueAtTime(0, at + BAR + 0.6);
+    g.connect(bus);
+    for (const midi of chord.slice(0, 4)) {
+      const o = ac.createOscillator();
+      o.type = "triangle";
+      o.frequency.value = hz(midi);
+      o.detune.value = jitter(5);
+      o.connect(g);
+      o.start(at);
+      o.stop(at + BAR + 0.7);
+    }
   }
 
   private stopMusic() {
