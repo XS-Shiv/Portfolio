@@ -4,24 +4,50 @@ import { T } from "../timings";
  * The monitor's screen. Draws everything live onto a 2D canvas that the 3D
  * monitor uses as a texture and the no-WebGL fallback lays over the photo.
  * Nothing on the screen is ever baked into an image.
+ *
+ * Modes: text (with blinking caret), image (a short CRT "broadcast" of a
+ * picture), boot (power-on), eyes (the talking face).
  */
 
-type Mode = "text" | "boot" | "face";
+type Mode = "text" | "image" | "boot" | "eyes";
 
 const W = 640;
 const H = 620;
 const PHOSPHOR = "#e6ecff";
 const GLOW = "rgba(120,160,255,0.65)";
 const FONT = "VT323";
+/** Duotone colours an image pop is broadcast in. */
+const TINTS = ["#ff4b2b", "#3f7dff", "#2fe08a", "#ffb02e"];
 
-// pixel-art glyphs for the face (1 = lit)
-const EYE_HAPPY = ["..#..", ".#.#.", "#...#"];
-const EYE_BLINK = [".....", ".....", "#####"];
-const MOUTH_SMILE = ["#.......#", ".#.....#.", "..#####.."];
-const MOUTH_TALK = ["..#####..", ".#.....#.", "..#####.."];
-const MOUTH_TALK_SMALL = [".........", "..#####..", "........."];
+// pixel art, drawn white on black and then tinted like a photo
+const PIXEL_ART: Record<string, string[]> = {
+  heart: [
+    ".##...##.",
+    "####.####",
+    "#########",
+    "#########",
+    ".#######.",
+    "..#####..",
+    "...###...",
+    "....#....",
+  ],
+  bulb: [
+    "...###...",
+    "..#...#..",
+    ".#.....#.",
+    ".#..#..#.",
+    ".#..#..#.",
+    "..#.#.#..",
+    "...###...",
+    "...###...",
+    "....#....",
+  ],
+  spark: ["....#....", "....#....", "...###...", "#########", "...###...", "....#....", "....#...."],
+  hi: ["#...#.###", "#...#..#.", "#####..#.", "#...#..#.", "#...#.###"],
+};
 
-type Star = { x: number; y: number; z: number; tw: number };
+type Pic = { gray: HTMLCanvasElement | null; tinted: Map<string, HTMLCanvasElement> };
+type Pop = { pic: Pic; tint: string; start: number; dur: number; returnTo: string };
 
 export class ScreenEngine {
   readonly canvas: HTMLCanvasElement;
@@ -35,8 +61,15 @@ export class ScreenEngine {
   private bootText = "";
   private talking = false;
   private nextBlink = 0;
-  private blinkUntil = 0;
-  private stars: Star[];
+  private blinkAt = -1e9;
+  private gaze = { x: 0, y: 0 };
+  private pics: Pic[] = [];
+  private picIndex = 0;
+  private tintIndex = 0;
+  private pop: Pop | null = null;
+  private glitchSeed = 0;
+  private glitchAt = 0;
+  private stars: { x: number; y: number; z: number; tw: number }[];
   private last = 0;
   private fontReady = false;
   reducedMotion = false;
@@ -63,11 +96,30 @@ export class ScreenEngine {
     }
   }
 
+  // ---------------------------------------------------------------- public
+
+  /** Pictures for the idle pops: image URLs, or "pixel:heart" style built-ins. */
+  loadImages(sources: string[]) {
+    this.pics = sources.map((src) => {
+      const pic: Pic = { gray: null, tinted: new Map() };
+      if (src.startsWith("pixel:")) {
+        pic.gray = pixelArt(PIXEL_ART[src.slice(6)] ?? PIXEL_ART.heart);
+      } else {
+        const img = new Image();
+        img.decoding = "async";
+        img.onload = () => (pic.gray = toGray(img));
+        img.src = src;
+      }
+      return pic;
+    });
+  }
+
   /** Steady text, e.g. "[CLICK] TO START_". A trailing "_" blinks as a caret. */
   showText(text: string, now = performance.now()) {
     this.mode = "text";
     this.text = text;
     this.modeAt = now;
+    this.pop = null;
   }
 
   /** Quick CRT flicker, then the new text. */
@@ -76,15 +128,28 @@ export class ScreenEngine {
     if (!this.reducedMotion) this.flickerUntil = now + T.nudgeFlicker;
   }
 
+  /** Broadcast the next picture for a few seconds, then go back to the current text. */
+  popImage(now = performance.now()): boolean {
+    const ready = this.pics.filter((p) => p.gray);
+    if (!ready.length || this.reducedMotion) return false;
+    const pic = ready[this.picIndex++ % ready.length];
+    const tint = TINTS[this.tintIndex++ % TINTS.length];
+    this.pop = { pic, tint, start: now, dur: T.imagePop, returnTo: this.mode === "text" ? this.text : "" };
+    this.mode = "image";
+    this.modeAt = now;
+    return true;
+  }
+
   /** Scan-line power-on flash, then a short boot line. */
   powerOn(bootText: string, now = performance.now()) {
     this.mode = "boot";
     this.bootText = bootText;
     this.modeAt = now;
+    this.pop = null;
   }
 
   showFace(now = performance.now()) {
-    this.mode = "face";
+    this.mode = "eyes";
     this.modeAt = now;
     this.scheduleBlink(now);
   }
@@ -93,8 +158,10 @@ export class ScreenEngine {
     this.talking = on;
   }
 
-  private scheduleBlink(now: number) {
-    this.nextBlink = now + T.blinkMin + Math.random() * (T.blinkMax - T.blinkMin);
+  /** Where the eyes look, -1..1 on each axis. */
+  setGaze(x: number, y: number) {
+    this.gaze.x = Math.max(-1, Math.min(1, x));
+    this.gaze.y = Math.max(-1, Math.min(1, y));
   }
 
   /** Draw a frame. Throttled to ~30fps; returns true when the canvas changed. */
@@ -103,35 +170,61 @@ export class ScreenEngine {
     this.last = now;
     const c = this.ctx;
 
-    // background: deep CRT black with a faint centre bloom
-    const g = c.createRadialGradient(W / 2, H * 0.45, 20, W / 2, H / 2, W * 0.75);
-    g.addColorStop(0, "#0f1424");
-    g.addColorStop(1, "#04050a");
-    c.fillStyle = g;
-    c.fillRect(0, 0, W, H);
-
     const since = now - this.modeAt;
     let brightness = 1;
 
     if (this.mode === "boot" && since < T.powerOn && !this.reducedMotion) {
+      this.background();
       this.drawPowerOn(since / T.powerOn);
       this.finish(1);
       return true;
     }
 
-    if (this.mode !== "face") this.drawStars(now);
+    if (this.mode === "image" && this.pop && since >= this.pop.dur) {
+      const back = this.pop.returnTo;
+      this.showText(back || this.text, now);
+      this.flickerUntil = now + T.nudgeFlicker;
+    }
 
     if (now < this.flickerUntil) {
       const step = Math.floor((this.flickerUntil - now) / (T.nudgeFlicker / 3));
       brightness = [0.25, 1.35, 0.5, 1][step % 4];
     }
 
-    if (this.mode === "text") this.drawText(now, brightness);
-    else if (this.mode === "boot") this.drawBootLine(now);
-    else this.drawFace(now);
+    if (this.mode === "image" && this.pop) {
+      this.drawImagePop(now, this.pop);
+      this.finish(1);
+      return true;
+    }
 
+    this.background();
+    if (this.mode === "text") {
+      this.drawStars(now);
+      this.drawText(now, brightness);
+    } else if (this.mode === "boot") {
+      this.drawStars(now);
+      this.drawBootLine(now);
+    } else {
+      this.drawEyes(now);
+    }
     this.finish(brightness);
+    void c;
     return true;
+  }
+
+  // ---------------------------------------------------------------- pieces
+
+  private scheduleBlink(now: number) {
+    this.nextBlink = now + T.blinkMin + Math.random() * (T.blinkMax - T.blinkMin);
+  }
+
+  private background() {
+    const c = this.ctx;
+    const g = c.createRadialGradient(W / 2, H * 0.45, 20, W / 2, H / 2, W * 0.75);
+    g.addColorStop(0, "#0f1424");
+    g.addColorStop(1, "#04050a");
+    c.fillStyle = g;
+    c.fillRect(0, 0, W, H);
   }
 
   private drawStars(now: number) {
@@ -144,6 +237,15 @@ export class ScreenEngine {
       c.fillStyle = `rgba(210,222,255,${a.toFixed(3)})`;
       const r = s.z > 0.85 ? 2 : 1.4;
       c.fillRect(x, y, r, r);
+    }
+  }
+
+  private noise(count: number, alpha: number) {
+    const c = this.ctx;
+    for (let i = 0; i < count; i++) {
+      const v = 120 + Math.random() * 135;
+      c.fillStyle = `rgba(${v},${v},${v},${(alpha * Math.random()).toFixed(3)})`;
+      c.fillRect(Math.random() * W, Math.random() * H, 2, 2);
     }
   }
 
@@ -166,8 +268,7 @@ export class ScreenEngine {
 
   private drawText(now: number, brightness: number) {
     const c = this.ctx;
-    const size = Math.round(H * 0.075);
-    this.setFont(size);
+    this.setFont(Math.round(H * 0.075));
     c.textBaseline = "alphabetic";
     const caretOn = this.reducedMotion || Math.floor(now / 530) % 2 === 0;
     const hasCaret = this.text.endsWith("_");
@@ -184,18 +285,14 @@ export class ScreenEngine {
 
   private drawBootLine(now: number) {
     const c = this.ctx;
-    const size = Math.round(H * 0.075);
-    this.setFont(size);
+    this.setFont(Math.round(H * 0.075));
     const since = now - this.modeAt - T.powerOn;
     const chars = this.reducedMotion ? this.bootText.length : Math.max(0, Math.floor(since / 22));
-    const shown = this.bootText.slice(0, chars);
+    const shown = "> " + this.bootText.slice(0, chars);
     const x = W * 0.08;
     const y = H * 0.5;
-    this.glowText("> " + shown, x, y);
-    if (Math.floor(now / 200) % 2 === 0) {
-      const w = c.measureText("> " + shown).width;
-      this.glowText("_", x + w, y);
-    }
+    this.glowText(shown, x, y);
+    if (Math.floor(now / 200) % 2 === 0) this.glowText("_", x + c.measureText(shown).width, y);
   }
 
   private drawPowerOn(p: number) {
@@ -213,48 +310,119 @@ export class ScreenEngine {
     c.shadowBlur = 0;
   }
 
-  private drawGlyph(rows: string[], cx: number, cy: number, px: number) {
+  /** A picture broadcast on a bad channel: duotone, torn lines, colour fringes, rolling bar, static. */
+  private drawImagePop(now: number, pop: Pop) {
     const c = this.ctx;
-    const w = rows[0].length * px;
-    const h = rows.length * px;
-    const x0 = Math.round(cx - w / 2);
-    const y0 = Math.round(cy - h / 2);
-    rows.forEach((row, j) => {
-      for (let i = 0; i < row.length; i++) {
-        if (row[i] === "#") c.fillRect(x0 + i * px, y0 + j * px, px - 2, px - 2);
-      }
-    });
+    const t = now - pop.start;
+    const edge = Math.min(t, pop.dur - t);
+    const burst = edge < 260; // static on the way in and out
+    const src = tinted(pop.pic, pop.tint);
+
+    c.fillStyle = "#030305";
+    c.fillRect(0, 0, W, H);
+    if (!src) return;
+
+    // pick new tear lines every ~90ms
+    if (now - this.glitchAt > 90) {
+      this.glitchAt = now;
+      this.glitchSeed = Math.random() * 1000;
+    }
+    const roll = burst ? (Math.random() - 0.5) * 60 : 0;
+    const band = 10;
+    c.save();
+    c.globalAlpha = burst ? 0.35 + Math.random() * 0.5 : 0.82 + Math.random() * 0.12;
+    for (let y = 0; y < H; y += band) {
+      const n = Math.sin(y * 12.9898 + this.glitchSeed) * 43758.5453;
+      const r = n - Math.floor(n);
+      let off = Math.sin(y * 0.045 + now * 0.004) * 3;
+      if (r > (burst ? 0.55 : 0.93)) off += (r - 0.5) * (burst ? 140 : 70);
+      c.drawImage(src, 0, y, W, band, off, y + roll, W, band);
+    }
+    // colour fringe
+    c.globalCompositeOperation = "screen";
+    c.globalAlpha = 0.28;
+    c.drawImage(src, 6, roll);
+    c.globalAlpha = 0.18;
+    c.drawImage(src, -5, roll + 1);
+    c.restore();
+
+    // rolling bright bar
+    const barY = ((now * 0.22) % (H + 120)) - 60;
+    const bar = c.createLinearGradient(0, barY - 60, 0, barY + 60);
+    bar.addColorStop(0, "rgba(255,255,255,0)");
+    bar.addColorStop(0.5, "rgba(255,255,255,0.09)");
+    bar.addColorStop(1, "rgba(255,255,255,0)");
+    c.fillStyle = bar;
+    c.fillRect(0, barY - 60, W, 120);
+
+    this.noise(burst ? 2200 : 320, burst ? 0.9 : 0.35);
   }
 
-  private drawFace(now: number) {
+  /** Two glowing round eyes that blink, follow the cursor and pulse while talking. */
+  private drawEyes(now: number) {
     const c = this.ctx;
+    // faint static behind the eyes, like a live tube
+    if (!this.reducedMotion) this.noise(260, 0.22);
+
     if (!this.reducedMotion && now > this.nextBlink) {
-      this.blinkUntil = now + T.blinkFor;
+      this.blinkAt = now;
       this.scheduleBlink(now);
     }
-    const blinking = now < this.blinkUntil;
-    const px = 22;
-    const eyes = blinking ? EYE_BLINK : EYE_HAPPY;
-    let mouth = MOUTH_SMILE;
+    const bt = now - this.blinkAt;
+    const blinkDur = T.blinkFor * 1.6;
+    const open = bt < blinkDur ? 1 - Math.sin((bt / blinkDur) * Math.PI) * 0.94 : 1;
+
+    // talking: a smooth, speech-like wobble in size and brightness
+    let talk = 0;
     if (this.talking && !this.reducedMotion) {
-      const f = Math.floor(now / T.talkFrame) % 3;
-      mouth = f === 0 ? MOUTH_TALK : f === 1 ? MOUTH_TALK_SMALL : MOUTH_SMILE;
+      const s = now / 1000;
+      talk = Math.abs(Math.sin(s * 11.3) * 0.6 + Math.sin(s * 17.9 + 1.3) * 0.4);
     }
-    // gentle fade-in when the face first appears
-    const fade = this.reducedMotion ? 1 : Math.min(1, (now - this.modeAt) / 220);
+    const fade = this.reducedMotion ? 1 : Math.min(1, (now - this.modeAt) / 260);
+    const r = W * 0.125 * (1 + talk * 0.09);
+    const gx = this.gaze.x * W * 0.07;
+    const gy = this.gaze.y * H * 0.06 - talk * 5;
+    const cy = H * 0.46;
     c.save();
-    c.globalAlpha = fade;
-    c.shadowColor = GLOW;
-    c.shadowBlur = 18;
-    c.fillStyle = PHOSPHOR;
-    this.drawGlyph(eyes, W * 0.33, H * 0.4, px);
-    this.drawGlyph(eyes, W * 0.67, H * 0.4, px);
-    this.drawGlyph(mouth, W * 0.5, H * 0.66, px);
-    // cheeks
-    c.shadowBlur = 0;
-    c.fillStyle = "rgba(120,150,255,0.35)";
-    this.drawGlyph(["##"], W * 0.2, H * 0.55, px);
-    this.drawGlyph(["##"], W * 0.8, H * 0.55, px);
+    c.globalAlpha = fade * (0.92 + talk * 0.08);
+    this.eye(W * 0.3 + gx, cy + gy, r, open);
+    this.eye(W * 0.7 + gx, cy + gy, r, open);
+    c.restore();
+  }
+
+  private eye(x: number, y: number, r: number, open: number) {
+    const c = this.ctx;
+    c.save();
+    c.translate(x, y);
+    c.scale(1, Math.max(0.06, open));
+    // wide soft halo
+    const halo = c.createRadialGradient(0, 0, r * 0.5, 0, 0, r * 2.1);
+    halo.addColorStop(0, "rgba(170,200,255,0.35)");
+    halo.addColorStop(1, "rgba(170,200,255,0)");
+    c.fillStyle = halo;
+    c.beginPath();
+    c.arc(0, 0, r * 2.1, 0, Math.PI * 2);
+    c.fill();
+    // warm and cool fringes, like a slightly mis-converged tube
+    c.globalCompositeOperation = "lighter";
+    c.fillStyle = "rgba(255,120,60,0.45)";
+    c.beginPath();
+    c.arc(r * 0.07, r * 0.02, r, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "rgba(70,150,255,0.5)";
+    c.beginPath();
+    c.arc(-r * 0.07, -r * 0.02, r, 0, Math.PI * 2);
+    c.fill();
+    // hot core
+    c.globalCompositeOperation = "source-over";
+    const core = c.createRadialGradient(0, 0, 0, 0, 0, r);
+    core.addColorStop(0, "rgba(255,255,255,1)");
+    core.addColorStop(0.72, "rgba(240,244,255,0.97)");
+    core.addColorStop(1, "rgba(210,225,255,0)");
+    c.fillStyle = core;
+    c.beginPath();
+    c.arc(0, 0, r, 0, Math.PI * 2);
+    c.fill();
     c.restore();
   }
 
@@ -285,4 +453,67 @@ export class ScreenEngine {
     }
     this.version++;
   }
+}
+
+// ------------------------------------------------------------------ helpers
+
+function blank() {
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  return c;
+}
+
+/** Fit an image to the screen (cover), grayscale it with a punchy contrast curve. */
+function toGray(img: HTMLImageElement) {
+  const c = blank();
+  const x = c.getContext("2d", { willReadFrequently: true })!;
+  const s = Math.max(W / img.naturalWidth, H / img.naturalHeight);
+  const w = img.naturalWidth * s;
+  const h = img.naturalHeight * s;
+  x.drawImage(img, (W - w) / 2, (H - h) / 2, w, h);
+  const d = x.getImageData(0, 0, W, H);
+  const p = d.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const l = (0.299 * p[i] + 0.587 * p[i + 1] + 0.114 * p[i + 2]) / 255;
+    const v = Math.round(255 * Math.min(1, Math.max(0, (l - 0.12) * 1.35)) ** 1.15);
+    p[i] = p[i + 1] = p[i + 2] = v;
+  }
+  x.putImageData(d, 0, 0);
+  return c;
+}
+
+function pixelArt(rows: string[]) {
+  const c = blank();
+  const x = c.getContext("2d")!;
+  x.fillStyle = "#000";
+  x.fillRect(0, 0, W, H);
+  const px = Math.floor(Math.min((W * 0.6) / rows[0].length, (H * 0.6) / rows.length));
+  const x0 = (W - rows[0].length * px) / 2;
+  const y0 = (H - rows.length * px) / 2;
+  x.fillStyle = "#fff";
+  rows.forEach((row, j) => {
+    for (let i = 0; i < row.length; i++)
+      if (row[i] === "#") x.fillRect(x0 + i * px, y0 + j * px, px - 4, px - 4);
+  });
+  return c;
+}
+
+/** Duotone: black stays black, white becomes the tint, highlights bloom toward white. */
+function tinted(pic: Pic, tint: string) {
+  if (!pic.gray) return null;
+  let t = pic.tinted.get(tint);
+  if (!t) {
+    t = blank();
+    const x = t.getContext("2d")!;
+    x.drawImage(pic.gray, 0, 0);
+    x.globalCompositeOperation = "multiply";
+    x.fillStyle = tint;
+    x.fillRect(0, 0, W, H);
+    x.globalCompositeOperation = "screen";
+    x.globalAlpha = 0.22;
+    x.drawImage(pic.gray, 0, 0);
+    pic.tinted.set(tint, t);
+  }
+  return t;
 }
