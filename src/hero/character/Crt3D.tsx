@@ -376,11 +376,14 @@ function Cables({
   torso,
   mats,
   updater,
+  bodyScale,
 }: {
   head: React.RefObject<THREE.Group | null>;
   torso: React.RefObject<THREE.Group | null>;
   mats: Mats;
   updater: React.RefObject<(() => void) | null>;
+  /** The torso's current scale; cable ends keep their depth on the sweater, like the plate. */
+  bodyScale: () => number;
 }) {
   const meshes = useRef<(THREE.Mesh | null)[]>([]);
   const beads = useRef<(THREE.Mesh | null)[]>([]);
@@ -407,7 +410,9 @@ function Cables({
       if (!mesh) return;
       const s = new THREE.Vector3(...c.start).applyMatrix4(h.matrixWorld);
       const dir = new THREE.Vector3(...c.dir).normalize().transformDirection(h.matrixWorld);
-      const end = ends[i].clone().applyMatrix4(t.matrixWorld);
+      const local = ends[i].clone();
+      local.z /= bodyScale();
+      const end = local.applyMatrix4(t.matrixWorld);
       const p1 = s.clone().addScaledVector(dir, 0.45);
       const pe = end.clone().add(new THREE.Vector3(0, 0.45, c.dz < 0 ? -0.1 : 0.12));
       const mid = p1.clone().lerp(pe, 0.5);
@@ -457,6 +462,9 @@ function Cables({
   );
 }
 
+/** How far the neck reaches up into the monitor, above the head's pivot (world units). */
+const NECK_TOP = 0.42;
+
 const smooth = (a: number, b: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
   return t * t * (3 - 2 * t);
@@ -467,10 +475,13 @@ function Neck({
   head,
   mats,
   updater,
+  bodyScale,
 }: {
   head: React.RefObject<THREE.Group | null>;
   mats: Mats;
   updater: React.RefObject<(() => void) | null>;
+  /** The torso's current scale; the neck stays its real size inside a scaled torso. */
+  bodyScale: () => number;
 }) {
   const mesh = useRef<THREE.Mesh>(null);
   const base = useMemo(() => torsoLocal(at((NECK.left + NECK.right) / 2, NECK.bottom, 0)), []);
@@ -483,7 +494,13 @@ function Neck({
     if (!h || !m) return;
     // head pivot transform relative to the torso
     const q = h.quaternion;
-    const top = h.position.clone().add(new THREE.Vector3(0, 0.75, 0).applyQuaternion(q));
+    const b = bodyScale();
+    // the neck ends just inside the bottom of the casing, never up near the glass;
+    // head-space lengths are divided by the torso scale, since this mesh lives in the torso
+    const top = h.position.clone().add(new THREE.Vector3(0, NECK_TOP / b, 0).applyQuaternion(q));
+    // the head comes forward as the torso grows; the neck stays back behind the collar
+    // (its top is still well inside the casing)
+    top.z -= ((b - 1) * TORSO.headForward) / b;
     const topDir = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
     const len = top.distanceTo(base);
     const curve = new THREE.CubicBezierCurve3(
@@ -496,7 +513,7 @@ function Neck({
       top.clone().sub(base),
     );
     const old = m.geometry;
-    const g = new THREE.TubeGeometry(curve, 16, radius, 28, false);
+    const g = new THREE.TubeGeometry(curve, 16, radius / b, 28, false);
     // painted-in shading: dark up under the monitor, soft falloff toward the sides and back
     const pos = g.attributes.position;
     const nrm = g.attributes.normal;
@@ -531,7 +548,7 @@ function Neck({
   );
 }
 
-function BodyPlate({ onLoad }: { onLoad: () => void }) {
+function BodyPlate({ onLoad, plate }: { onLoad: () => void; plate: React.RefObject<THREE.Mesh | null> }) {
   const tex = useMemo(() => {
     const t = new THREE.TextureLoader().load("/character/body.webp", () => onLoad());
     t.colorSpace = THREE.SRGBColorSpace;
@@ -557,7 +574,7 @@ function BodyPlate({ onLoad }: { onLoad: () => void }) {
   const k = (CAM_Z - BODY_Z) / CAM_Z;
   const centre = torsoLocal(at(SRC / 2, BODY_TOP + BODY_SIZE.h / 2, BODY_Z));
   return (
-    <mesh position={centre} renderOrder={1}>
+    <mesh ref={plate} position={centre} renderOrder={1}>
       <planeGeometry args={[(BODY_SIZE.w / 100) * k, (BODY_SIZE.h / 100) * k]} />
       <meshBasicMaterial map={tex} alphaMap={edgeFade} transparent alphaTest={0.03} toneMapped={false} />
     </mesh>
@@ -596,6 +613,7 @@ function Scene({ engine, head, led, onReady }: Omit<RendererProps, "paused">) {
   const torso = useRef<THREE.Group>(null);
   const pivot = useRef<THREE.Group>(null);
   const monitorRef = useRef<THREE.Group>(null);
+  const plate = useRef<THREE.Mesh>(null);
   const frames = useRef(0);
   const bodyLoaded = useRef(false);
   const angle = useRef<{ yaw: number; pitch: number; torso: number; roll: number; body: number }>({
@@ -639,6 +657,8 @@ function Scene({ engine, head, led, onReady }: Omit<RendererProps, "paused">) {
   }, []);
 
   const pivotPos = useMemo(() => torsoLocal(at(PIVOT.x, PIVOT.y, 0)), []);
+  /** Depth of the sweater plate, torso-local. */
+  const plateZ = useMemo(() => torsoLocal(at(SRC / 2, 0, BODY_Z)).z, []);
   /** Height of the collar (where the neck meets the sweater), torso-local. */
   const collarY = useMemo(() => torsoLocal(at(PIVOT.x, NECK.bottom, 0)).y, []);
 
@@ -700,11 +720,17 @@ function Scene({ engine, head, led, onReady }: Omit<RendererProps, "paused">) {
       // a bigger torso must not mean a bigger head, or a longer neck: the head
       // rides on the collar, which moves with the torso, and keeps its own size
       pivot.current.scale.setScalar(1 / a.body);
+      // as the torso grows, the head also comes a little forward, so a turned head's
+      // far corner stays in front of the collar instead of dipping behind it
       pivot.current.position.set(
         pivotPos.x,
         (a.body * collarY + (pivotPos.y - collarY)) / a.body,
-        pivotPos.z,
+        (pivotPos.z + (a.body - 1) * TORSO.headForward) / a.body,
       );
+    }
+    if (plate.current) {
+      // the sweater keeps its depth (only its size grows), so it stays behind the head
+      plate.current.position.z = plateZ / a.body;
     }
     updateNeck.current?.();
     updateCables.current?.();
@@ -733,15 +759,21 @@ function Scene({ engine, head, led, onReady }: Omit<RendererProps, "paused">) {
       />
       <directionalLight position={[9, 1, 5]} intensity={0.5} color="#dfe6ff" />
       <group ref={torso} position={TP}>
-        <BodyPlate onLoad={() => (bodyLoaded.current = true)} />
-        <Neck head={pivot} mats={mats} updater={updateNeck} />
+        <BodyPlate onLoad={() => (bodyLoaded.current = true)} plate={plate} />
+        <Neck head={pivot} mats={mats} updater={updateNeck} bodyScale={() => angle.current.body} />
         <group ref={pivot} position={pivotPos}>
           <group ref={monitorRef} position={[0, M.lift, M.zOffset + M.d / 2]} scale={M.scale}>
             <Monitor mats={mats} screenMat={screenMat} led={led} />
           </group>
         </group>
       </group>
-      <Cables head={monitorRef} torso={torso} mats={mats} updater={updateCables} />
+      <Cables
+        head={monitorRef}
+        torso={torso}
+        mats={mats}
+        updater={updateCables}
+        bodyScale={() => angle.current.body}
+      />
     </>
   );
 }

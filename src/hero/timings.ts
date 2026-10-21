@@ -78,6 +78,7 @@ export const TORSO = {
   pitchFollow: 0.32, // and lean in when he looks down
   poseFollow: 0.25, // share of a pose's built-in turn the shoulders take
   scaleDamping: 3.2, // how fast the torso grows into State 2
+  headForward: 2.0, // world units the head comes forward per unit of torso growth
   breathe: 0.035, // ~3.5px
   sway: 0.9, // idle sway of the shoulders, degrees
   swayPeriod: 7400, // ms
