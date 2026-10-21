@@ -4,7 +4,6 @@ Personal portfolio of Shivanand Shukla. The hero is a CRT-headed character that 
 
 ![State 1](docs/screenshots/desktop-idle.jpg)
 ![State 2](docs/screenshots/desktop-conversation.jpg)
-![The machine slips into "we"](docs/screenshots/desktop-glitch.jpg)
 
 ## Deploy on Vercel (one time)
 
@@ -16,21 +15,13 @@ No environment variables are needed.
 
 ## Change the words
 
-Everything the site says lives in [`src/hero/content.ts`](src/hero/content.ts): the signature, the contact links, the screen text and the whole conversation.
+Everything the site says lives in [`src/hero/content.ts`](src/hero/content.ts): the status line, the contact links, the screen text and the State 2 introduction (title, subtitle, body lines, the main button and the three cards).
 
-The conversation is a small graph. Each entry in `dialogue` has:
+For now the "View my work" button and the three cards do nothing when clicked. They are real buttons, so wiring them to sections later only needs an `onClick` in `Hero.tsx`.
 
-- `system`: the small terminal line at the top (the machine's voice)
-- `lines`: what Shiv says, typed in order. The newest is large; the one before it small and faded
-- `sub`: the subtext under the large line
-- `screen`: the caption under the eyes on the monitor
-- `options`: the replies. The **first is the main call to action** (the big dark card); the rest are minor rows
+### The "I <-> we" flip
 
-An option can go to another node (`next`), open a link (`href`) or open the contact panel (`action: "connect"`). Options with a `topic` fill the progress bar and light one more LED under the screen.
-
-### The "I → we" glitch
-
-A line can carry a `slip` (the same sentence, but "we") and a `recovery`. It types normally, tears into the slip for a moment, then is replaced by the recovery, as if nothing happened. Mark it `once` so it plays only on the first visit. There are three on purpose; more and it becomes a gimmick.
+Once State 2 has settled, every 6 to 11 seconds one pronoun in the visible text flips into its opposite (I to we, my to our, we to I) with a glitch, then flips back. It blurs who is talking, the human or the machine. The word list is in [`src/hero/pronouns.ts`](src/hero/pronouns.ts) and the timing in `timings.ts`.
 
 ## Change the pictures on the screen
 
@@ -56,10 +47,11 @@ Add `?nowebgl` to the URL to see the photo fallback that browsers without WebGL 
 |---|---|
 | `src/hero/Hero.tsx` | The page: state machine wiring, conversation column, chrome, controls |
 | `src/hero/machine.ts` | Explicit states: `idle → booting → conversation`, plus `restarting` |
+| `src/hero/pronouns.ts` | The I <-> we flip: which words swap and how |
 | `src/hero/screen/engine.ts` | Draws the monitor screen live on a canvas: stars, text, caret, flicker, power-on, the face |
 | `src/hero/character/Character.tsx` | The one `<Character />` interface: photo first, then the 3D head |
 | `src/hero/character/Crt3D.tsx` | The procedural 3D monitor (React Three Fiber). Swap for a GLB here |
-| `src/hero/sound.ts` | Ambient room tone, power-on hum, key clicks and the glitch blip, synthesised with WebAudio, off until the top-bar speaker is pressed |
+| `src/hero/sound.ts` | Quiet generative background music (slow chords, soft reverb, the odd bell), plus a soft power-on swell and a faint glitch crackle. Off until the top-bar speaker is pressed |
 | `scripts/make_plates.py` | Rebuilds `public/character/body.*` and `front-blank.*` from `front.png` |
 
 Details: [requirements](docs/plans/2026-10-20-1931-feat-crt-hero-plan.md), [visual direction](docs/design/hero-direction.md), [lessons learned](docs/learnings.md).

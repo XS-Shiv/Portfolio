@@ -30,9 +30,9 @@ A luminance key works because everything on the body is dark and the backdrop is
 
 Headless Chromium here renders WebGL in software at 2–3 fps, which also slows `setTimeout`-driven typing. Tests wait for elements (`.pill`) rather than fixed delays.
 
-## Where the "I → we" glitch plays
+## The I <-> we flip
 
-The glitch line is typed first, so it naturally lands in the small "previous" slot above the large line, which is chronologically right: he said it first. While it is being said that slot is sharp and black (`.line-prev.is-live`); once he recovers it fades like any other previous line. Putting the glitch on the large line instead meant either losing the destination's main sentence or typing three large lines in a row, which is too slow for a visitor who stays under a minute. Glitch lines are `once`, so a second visit skips them rather than replaying a joke that only works once.
+The flip swaps one pronoun at a time, never a whole sentence, and only after everything has appeared, so it reads as the machine slipping rather than as a typo. The swapped word is wrapped in a `nowrap` span so the line never reflows while it glitches, and on the dark cards the colour-split copies use `screen` blending instead of `multiply`, or they vanish into the dark background.
 
 ## Slimming the monitor
 
