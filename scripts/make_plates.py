@@ -1,7 +1,7 @@
 """Build the transparent image plates the hero uses from public/character/front.png.
 
 Outputs (in public/character/):
-  body.webp/.avif   sweater + neck only, transparent, extended downwards for tall phones
+  body.webp/.avif   sweater only (neck removed: the 3D scene draws it), transparent, extended downwards
   front-blank.*    the whole character (monitor + body) with the screen blanked, transparent,
                    used as the first paint and as the no-WebGL fallback
 
@@ -34,6 +34,40 @@ def decontaminate(rgb, alpha):
     return np.clip((rgb - (1 - a) * BG) / a, 0, 255)
 
 
+def neck_collar(src, xs):
+    """Row where the turtleneck starts, per column (the skin's lowest pixel). Columns hidden by the
+    plugs on the left are mirrored from the clean right half."""
+    collar = np.zeros(len(xs))
+    for i, x in enumerate(xs):
+        sx = x if x >= 622 else int(round(2 * NECK_C - x))
+        sx = int(min(max(sx, 622), NECK_R - 2))
+        col = src[740:860, sx].astype(int)
+        skin = [j for j, p in enumerate(col) if p[0] > p[2] + 15]
+        collar[i] = 740 + (skin[-1] if skin else 60) + 2
+    # the rim is a smooth curve: fit a parabola to the clean right half, symmetric about the neck
+    clean = xs >= 622
+    u = (xs[clean] - NECK_C) ** 2
+    a, b = np.polyfit(u, collar[clean], 1)
+    return a * (xs - NECK_C) ** 2 + b
+
+
+def fair_skin(rgb, alpha, src):
+    """Recolour the neck to a fair skin tone, keeping the photo's shading."""
+    r, g, b = src[..., 0], src[..., 1], src[..., 2]
+    skin = (r > b + 15) & (r > 40) & (alpha > 0.05)
+    skin[:700] = False
+    skin[880:] = False
+    skin[:, :NECK_L - 10] = False
+    skin[:, NECK_R + 10:] = False
+    lum = src.mean(2)
+    ref = np.percentile(lum[skin], 80)
+    fair = np.array([240.0, 204.0, 180.0])
+    shade = np.clip(lum / ref, 0, 1.15)[..., None] ** 0.8
+    new = np.clip(fair * shade, 0, 255)
+    soft = ndi.gaussian_filter(skin.astype(float), 1.0)[..., None]
+    return rgb * (1 - soft) + new * soft
+
+
 def body_plate(src, full_alpha):
     """Sweater + neck from the full cutout, monitor removed, extended downwards for tall phones."""
     h, w, _ = src.shape
@@ -52,24 +86,13 @@ def body_plate(src, full_alpha):
     t = np.clip(alpha / 0.35, 0, 1)[..., None]
     rgb = rgb * t + navy * (1 - t)
 
-    # neck: per-column skin profile from the plug-free right half, mirrored, darker under the monitor
-    xs = np.arange(NECK_L, NECK_R + 1)
-    prof = np.zeros((len(xs), 3)); collar = np.zeros(len(xs))
+    # neck: removed. The 3D scene draws a bending neck behind the collar; only the collar stays.
+    xs = np.arange(NECK_L - 4, NECK_R + 5)
+    collar = neck_collar(src, xs)
     for i, x in enumerate(xs):
-        sx = x if x >= 622 else int(round(2 * NECK_C - x))
-        sx = int(min(max(sx, 622), NECK_R - 2))
-        prof[i] = np.median(src[776:798, sx], axis=0)
-        col = src[740:860, sx].astype(int)
-        skin = [j for j, p in enumerate(col) if p[0] > p[2] + 15]
-        collar[i] = 740 + (skin[-1] if skin else 60) + 2
-    collar = ndi.uniform_filter1d(collar, 11)
-    rng = np.random.default_rng(7)
-    for i, x in enumerate(xs):
-        edge = np.clip(min(x - NECK_L + 1, NECK_R - x + 1) / 3, 0, 1)
-        for y in range(CUT_Y, int(collar[i])):
-            shade = 0.45 + 0.55 * np.clip((y - 715) / 75, 0, 1)
-            rgb[y, x] = prof[i] * shade * (1 + rng.normal(0, 0.025))
-            alpha[y, x] = edge
+        c = int(collar[i])
+        alpha[CUT_Y:c, x] = 0
+        alpha[c:c + 3, x] *= np.array([0.35, 0.7, 1.0])[: len(alpha[c:c + 3, x])]
 
     # extend downwards: column shading stretched (knit ribs are vertical anyway) plus mirrored fine detail
     H = h + PAD_B
@@ -118,6 +141,7 @@ def front_blank(src):
     glow = np.clip(1 - np.hypot((xx - 770) / 300, (yy - 420) / 260), 0, 1)
     base = np.stack([8 + 10 * glow, 10 + 10 * glow, 14 + 12 * glow], -1)
     rgb[m] = base[m]
+    rgb = fair_skin(rgb, alpha, src)
     rgba = np.dstack([rgb, alpha * 255]).astype(np.uint8)
     return Image.fromarray(rgba, "RGBA"), alpha
 

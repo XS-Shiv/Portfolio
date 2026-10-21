@@ -2,27 +2,40 @@
 
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type React from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
-import { HEAD, T } from "../timings";
-import { CABLE_ENDS, CANVAS_MARGIN, PIVOT, SRC } from "./geometry";
+import { HEAD, T, TORSO } from "../timings";
+import { BODY_SIZE, BODY_TOP, CANVAS, NECK, PIVOT, SRC, TORSO_PIVOT } from "./geometry";
 import type { RendererProps } from "./types";
 
 /**
- * The procedural CRT head. Modelled from turnaround.png in units of 100 source
- * pixels. Swap this file for a GLB loader later; the props stay the same.
+ * The 3D character: a procedural CRT head on a bending neck, cables, and the
+ * photographed sweater as a textured plane, all turning together.
+ * Units: 1 world unit = 100 source-photo pixels on the z=0 plane.
+ * Swap the Monitor for a GLB later; the props stay the same.
  */
 
 const DEG = Math.PI / 180;
-const FOV = 28;
-const VIEW_H = (SRC * (1 + 2 * CANVAS_MARGIN)) / 100;
-const CAM_Z = VIEW_H / 2 / Math.tan((FOV / 2) * DEG);
+const CAM_Z = 33.2;
+/** The camera frames the box plus FULL_M on every side; the canvas shows a part of that. */
+const FULL_M = Math.max(CANVAS.side, CANVAS.top, CANVAS.bottom);
+const FULL = (SRC * (1 + 2 * FULL_M)) / 100;
+const FOV = (2 * Math.atan(FULL / 2 / CAM_Z)) / DEG;
 
-/** source-photo pixel -> world units on the z=0 plane (where the body plate sits) */
-const src2world = (x: number, y: number, z = 0) =>
-  new THREE.Vector3((x - SRC / 2) / 100, (SRC / 2 - y) / 100, z);
+/** Where the sweater plane sits. In front of the neck, so the collar hides the neck's base. */
+const BODY_Z = 1.0;
+
+/** source-photo pixel -> world, on a plane at depth z (scaled so it still lines up with the photo) */
+const at = (x: number, y: number, z = 0) => {
+  const k = (CAM_Z - z) / CAM_Z;
+  return new THREE.Vector3(((x - SRC / 2) / 100) * k, ((SRC / 2 - y) / 100) * k, z);
+};
+
+const TP = at(TORSO_PIVOT.x, TORSO_PIVOT.y, 0);
+/** world -> torso-local (the torso group sits at TP with no rest rotation) */
+const torsoLocal = (v: THREE.Vector3) => v.clone().sub(TP);
 
 // monitor dimensions (world units), tuned against front.png
 const M = {
@@ -35,9 +48,108 @@ const M = {
   screenW: 5.0,
   screenH: 4.66,
   screenY: 0.3, // screen sits a little above centre; LEDs below
-  lift: 3.12, // monitor centre above the neck pivot
+  lift: 2.8, // monitor centre above the neck pivot (low, so only a little neck shows)
   zOffset: -0.1,
 };
+const SIDE = (M.w - 0.18) / 2;
+const CASING_Z = -M.frameDepth - (M.d * 0.7) / 2 + 0.05;
+const BOTTOM = -M.h / 2 - 0.12;
+
+type Cable = {
+  /** where it leaves the monitor, in monitor-local units */
+  start: [number, number, number];
+  dir: [number, number, number];
+  /** where it ends, in source-photo pixels; dz < 0 tucks it behind the sweater */
+  end: [number, number];
+  dz: number;
+  /** how far the middle hangs, and which way it bows (world units) */
+  sag: number;
+  bow: [number, number];
+  r?: number;
+  /** inline ferrite bead at this fraction of the length */
+  ferrite?: number;
+};
+
+/** Modelled on the product shots: plugs underneath, jacks on both sides, loops over the shoulders. */
+const CABLES: Cable[] = [
+  // underneath, front: drape onto the chest
+  {
+    start: [-0.95, BOTTOM, CASING_Z + 0.9],
+    dir: [0, -1, 0],
+    end: [568, 940],
+    dz: 0.05,
+    sag: 0.25,
+    bow: [0, 0.3],
+  },
+  {
+    start: [-0.62, BOTTOM, CASING_Z + 0.9],
+    dir: [0, -1, 0],
+    end: [604, 1010],
+    dz: 0.05,
+    sag: 0.35,
+    bow: [0.1, 0.3],
+  },
+  // underneath, right: loop out and tuck behind the right shoulder
+  {
+    start: [1.5, BOTTOM, CASING_Z + 0.9],
+    dir: [0, -1, 0],
+    end: [850, 960],
+    dz: -0.6,
+    sag: 0.9,
+    bow: [0.6, 0.3],
+  },
+  {
+    start: [1.85, BOTTOM, CASING_Z + 0.2],
+    dir: [0, -1, 0],
+    end: [890, 1000],
+    dz: -0.6,
+    sag: 1.2,
+    bow: [0.9, 0.2],
+    r: 0.04,
+  },
+  // left side jacks: big loops down onto the left of the chest (they meet the photo's own cables)
+  {
+    start: [-SIDE - 0.1, -2.2, -0.9],
+    dir: [-1, -0.2, 0],
+    end: [421, 858],
+    dz: 0.05,
+    sag: 0.6,
+    bow: [-0.9, 0.5],
+  },
+  {
+    start: [-SIDE - 0.1, 0.9, -2.4],
+    dir: [-1, 0, 0],
+    end: [393, 869],
+    dz: 0.05,
+    sag: 1.0,
+    bow: [-1.4, 0.4],
+    ferrite: 0.38,
+  },
+  // left: from the speaker cup, down behind the shoulder
+  {
+    start: [-SIDE - 0.3, -0.9, CASING_Z + 0.35],
+    dir: [-0.4, -1, 0],
+    end: [340, 1010],
+    dz: -0.6,
+    sag: 0.6,
+    bow: [-0.6, 0],
+  },
+  {
+    start: [-SIDE - 0.1, -1.4, -3.1],
+    dir: [-1, -0.4, -0.2],
+    end: [430, 1000],
+    dz: -0.6,
+    sag: 1.3,
+    bow: [-1.6, -0.2],
+    r: 0.04,
+    ferrite: 0.5,
+  },
+  // right side jack
+  { start: [SIDE + 0.1, -1.8, -2.0], dir: [1, -0.3, 0], end: [930, 1020], dz: -0.6, sag: 1.1, bow: [0.8, 0] },
+  // back panel: hang behind the neck, seen when he turns
+  { start: [-0.6, -2.6, -5.1], dir: [0, -0.4, -1], end: [610, 900], dz: -2.4, sag: 0.4, bow: [0, -0.4] },
+  { start: [0.8, -2.6, -5.1], dir: [0, -0.4, -1], end: [700, 900], dz: -2.4, sag: 0.4, bow: [0, -0.4] },
+];
 
 function roundedRect(w: number, h: number, r: number, cx = 0, cy = 0) {
   const s = new THREE.Shape();
@@ -146,6 +258,14 @@ function useMaterials() {
       }),
       ledOff: new THREE.MeshStandardMaterial({ color: "#76787e", metalness: 0.5, roughness: 0.4 }),
       cable: new THREE.MeshStandardMaterial({ color: "#0d0d0f", metalness: 0.1, roughness: 0.45 }),
+      ferrite: new THREE.MeshStandardMaterial({ color: "#1a1a1d", metalness: 0.2, roughness: 0.5 }),
+      skin: new THREE.MeshStandardMaterial({
+        color: "#e8b493",
+        roughness: 0.58,
+        metalness: 0,
+        envMapIntensity: 0.45,
+        vertexColors: true,
+      }),
     };
   }, []);
 }
@@ -173,7 +293,8 @@ function Monitor({ mats, screenMat, led }: { mats: Mats; screenMat: THREE.Materi
       cap: new THREE.CylinderGeometry(0.4, 0.44, 0.14, 40),
       ring: new THREE.TorusGeometry(0.5, 0.045, 12, 48),
       led: new RoundedBoxGeometry(0.17, 0.06, 0.04, 2, 0.02),
-      plug: new RoundedBoxGeometry(0.2, 0.36, 0.2, 2, 0.04),
+      plug: new RoundedBoxGeometry(0.2, 0.42, 0.2, 2, 0.04),
+      jack: new THREE.CylinderGeometry(0.09, 0.11, 0.34, 16),
     };
   }, []);
 
@@ -229,28 +350,116 @@ function Monitor({ mats, screenMat, led }: { mats: Mats; screenMat: THREE.Materi
           position={[1.22 + i * 0.27, -h / 2 + 0.42, front + 0.01]}
         />
       ))}
-      {/* plugs on the underside, where the cables leave */}
-      {[-0.95, -0.62, 1.5].map((x) => (
+      {/* plugs and jacks where the cables leave */}
+      {CABLES.map((c, i) => (
         <mesh
-          key={`p${x}`}
-          geometry={geo.plug}
+          key={`j${i}`}
+          geometry={c.dir[1] < -0.5 ? geo.plug : geo.jack}
           material={mats.black}
-          position={[x, -h / 2 - 0.12, casingZ + 0.9]}
+          position={c.start}
+          quaternion={new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            new THREE.Vector3(...c.dir).normalize(),
+          )}
         />
       ))}
     </group>
   );
 }
 
-/** Cables: from the plugs under the head to where the photo's cables continue on the sweater. */
-const CABLE_STARTS = [
-  new THREE.Vector3(-0.95, -M.h / 2 - 0.3, -1.3),
-  new THREE.Vector3(-0.62, -M.h / 2 - 0.3, -1.3),
-  new THREE.Vector3(-M.w / 2 - 0.25, -0.9, -1.75),
-  new THREE.Vector3(-M.w / 2 - 0.25, -0.6, -1.95),
-];
-
 function Cables({
+  head,
+  torso,
+  mats,
+  updater,
+}: {
+  head: React.RefObject<THREE.Group | null>;
+  torso: React.RefObject<THREE.Group | null>;
+  mats: Mats;
+  updater: React.RefObject<(() => void) | null>;
+}) {
+  const meshes = useRef<(THREE.Mesh | null)[]>([]);
+  const beads = useRef<(THREE.Mesh | null)[]>([]);
+  const ends = useMemo(() => CABLES.map((c) => torsoLocal(at(c.end[0], c.end[1], BODY_Z + c.dz))), []);
+  const empties = useMemo(() => CABLES.map(() => new THREE.BufferGeometry()), []);
+  const beadGeo = useMemo(() => new THREE.CylinderGeometry(0.11, 0.11, 0.42, 16), []);
+  const lastKey = useRef("");
+  const up = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+
+  const update = () => {
+    const h = head.current;
+    const t = torso.current;
+    if (!h || !t) return;
+    h.updateWorldMatrix(true, false);
+    t.updateWorldMatrix(true, false);
+    const key = h.matrixWorld.elements
+      .concat(t.matrixWorld.elements)
+      .map((v) => v.toFixed(3))
+      .join(",");
+    if (key === lastKey.current) return;
+    lastKey.current = key;
+    CABLES.forEach((c, i) => {
+      const mesh = meshes.current[i];
+      if (!mesh) return;
+      const s = new THREE.Vector3(...c.start).applyMatrix4(h.matrixWorld);
+      const dir = new THREE.Vector3(...c.dir).normalize().transformDirection(h.matrixWorld);
+      const end = ends[i].clone().applyMatrix4(t.matrixWorld);
+      const p1 = s.clone().addScaledVector(dir, 0.45);
+      const pe = end.clone().add(new THREE.Vector3(0, 0.45, c.dz < 0 ? -0.1 : 0.12));
+      const mid = p1.clone().lerp(pe, 0.5);
+      mid.x += c.bow[0];
+      mid.z += c.bow[1];
+      mid.y -= c.sag;
+      const pts = c.dz < 0 ? [s, p1, mid, end] : [s, p1, mid, pe, end];
+      const curve = new THREE.CatmullRomCurve3(pts, false, "centripetal");
+      const old = mesh.geometry;
+      mesh.geometry = new THREE.TubeGeometry(curve, 48, c.r ?? 0.05, 7, false);
+      old.dispose();
+      const bead = beads.current[i];
+      if (bead && c.ferrite !== undefined) {
+        bead.position.copy(curve.getPointAt(c.ferrite));
+        bead.quaternion.setFromUnitVectors(up, curve.getTangentAt(c.ferrite));
+      }
+    });
+  };
+  useEffect(() => {
+    lastKey.current = "";
+    updater.current = update;
+  });
+
+  return (
+    <>
+      {CABLES.map((c, i) => (
+        <group key={i}>
+          <mesh
+            ref={(m) => {
+              meshes.current[i] = m;
+            }}
+            material={mats.cable}
+            geometry={empties[i]}
+          />
+          {c.ferrite !== undefined && (
+            <mesh
+              ref={(m) => {
+                beads.current[i] = m;
+              }}
+              geometry={beadGeo}
+              material={mats.ferrite}
+            />
+          )}
+        </group>
+      ))}
+    </>
+  );
+}
+
+const smooth = (a: number, b: number, x: number) => {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
+/** A neck that bends: its base is fixed behind the collar, its top follows the head. */
+function Neck({
   head,
   mats,
   updater,
@@ -259,83 +468,121 @@ function Cables({
   mats: Mats;
   updater: React.RefObject<(() => void) | null>;
 }) {
-  const meshes = useRef<(THREE.Mesh | null)[]>([]);
-  const ends = useMemo(() => CABLE_ENDS.map(([x, y]) => src2world(x, y, 0.15)), []);
-  const tmp = useMemo(
-    () => ({ s: new THREE.Vector3(), down: new THREE.Vector3(), out: new THREE.Vector3() }),
-    [],
-  );
-  const lastKey = useRef("");
-  const empties = useMemo(() => CABLE_STARTS.map(() => new THREE.BufferGeometry()), []);
-  useEffect(() => {
-    lastKey.current = ""; // (re)mounted: rebuild on the next frame
-  }, []);
+  const mesh = useRef<THREE.Mesh>(null);
+  const base = useMemo(() => torsoLocal(at((NECK.left + NECK.right) / 2, NECK.bottom, 0)), []);
+  const radius = ((NECK.right - NECK.left) / 200) * 1.02;
+  const empty = useMemo(() => new THREE.BufferGeometry(), []);
 
   const update = () => {
-    const g = head.current;
-    if (!g) return;
-    g.updateWorldMatrix(true, false);
-    const e = g.matrixWorld.elements;
-    const key = e.map((v) => v.toFixed(3)).join(",");
-    if (key === lastKey.current) return;
-    lastKey.current = key;
-    CABLE_STARTS.forEach((start, i) => {
-      const mesh = meshes.current[i];
-      if (!mesh) return;
-      const s = tmp.s.copy(start).applyMatrix4(g.matrixWorld);
-      const down = tmp.down.set(0, -1, 0).transformDirection(g.matrixWorld);
-      const end = ends[i];
-      const sideways = i >= 2;
-      let pts: THREE.Vector3[];
-      if (sideways) {
-        const p1 = s.clone().addScaledVector(down, 0.7);
-        p1.x -= 0.35 + i * 0.12;
-        const p2 = new THREE.Vector3(end.x - 0.55 - (i - 2) * 0.25, end.y + 1.3, end.z + 0.4);
-        const p3 = end.clone().add(new THREE.Vector3(-0.12, 0.35, 0.1));
-        pts = [s.clone(), p1, p2, p3, end.clone()];
-      } else {
-        const p1 = s.clone().addScaledVector(down, 0.35);
-        const mid = s.clone().lerp(end, 0.55);
-        mid.y -= 0.35;
-        mid.z += 0.25;
-        const p3 = end.clone().add(new THREE.Vector3(0, 0.3, 0.05));
-        pts = [s.clone(), p1, mid, p3, end.clone()];
-      }
-      const curve = new THREE.CatmullRomCurve3(pts, false, "centripetal");
-      const old = mesh.geometry;
-      mesh.geometry = new THREE.TubeGeometry(curve, 40, 0.045, 6, false);
-      old.dispose();
-    });
+    const h = head.current;
+    const m = mesh.current;
+    if (!h || !m) return;
+    // head pivot transform relative to the torso
+    const q = h.quaternion;
+    const top = h.position.clone().add(new THREE.Vector3(0, 0.75, 0).applyQuaternion(q));
+    const topDir = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+    const len = top.distanceTo(base);
+    const curve = new THREE.CubicBezierCurve3(
+      base.clone().sub(base),
+      new THREE.Vector3(0, len * 0.4, 0),
+      top
+        .clone()
+        .sub(base)
+        .addScaledVector(topDir, -len * 0.35),
+      top.clone().sub(base),
+    );
+    const old = m.geometry;
+    const g = new THREE.TubeGeometry(curve, 16, radius, 28, false);
+    // painted-in shading: dark up under the monitor, soft falloff toward the sides and back
+    const pos = g.attributes.position;
+    const nrm = g.attributes.normal;
+    const col = new Float32Array(pos.count * 3);
+    for (let i = 0; i < pos.count; i++) {
+      const t = Math.floor(i / 29) / 16; // 0 at the collar, 1 inside the monitor
+      const under = 1 - 0.7 * smooth(0.35, 0.85, t);
+      const facing = 0.5 + 0.5 * Math.pow(Math.max(0, nrm.getZ(i)), 0.8);
+      const v = under * facing;
+      col[i * 3] = v;
+      col[i * 3 + 1] = v * 0.97;
+      col[i * 3 + 2] = v * 0.95;
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    m.geometry = g;
+    old.dispose();
   };
   useEffect(() => {
     updater.current = update;
   });
 
+  // squashed front-to-back so it fits behind the collar
   return (
-    <>
-      {CABLE_STARTS.map((_, i) => (
-        <mesh
-          key={i}
-          ref={(m) => {
-            meshes.current[i] = m;
-          }}
-          material={mats.cable}
-          geometry={empties[i]}
-        />
-      ))}
-    </>
+    <mesh
+      ref={mesh}
+      position={base}
+      scale={[1, 1, 0.72]}
+      material={mats.skin}
+      geometry={empty}
+      receiveShadow
+    />
   );
+}
+
+function BodyPlate({ onLoad }: { onLoad: () => void }) {
+  const tex = useMemo(() => {
+    const t = new THREE.TextureLoader().load("/character/body.webp", () => onLoad());
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const k = (CAM_Z - BODY_Z) / CAM_Z;
+  const centre = torsoLocal(at(SRC / 2, BODY_TOP + BODY_SIZE.h / 2, BODY_Z));
+  return (
+    <mesh position={centre} renderOrder={1}>
+      <planeGeometry args={[(BODY_SIZE.w / 100) * k, (BODY_SIZE.h / 100) * k]} />
+      <meshBasicMaterial map={tex} transparent alphaTest={0.03} toneMapped={false} />
+    </mesh>
+  );
+}
+
+/** Frame the whole box-with-margins, then show only the canvas part of it. */
+function Framing() {
+  const { camera, size } = useThree();
+  useLayoutEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    const cw = 1 + 2 * CANVAS.side;
+    const ch = 1 + CANVAS.top + CANVAS.bottom;
+    const full = 1 + 2 * FULL_M;
+    cam.fov = FOV;
+    cam.aspect = 1;
+    cam.position.set(0, 0, CAM_Z);
+    cam.near = 1;
+    cam.far = 200;
+    cam.setViewOffset(
+      (size.width * full) / cw,
+      (size.height * full) / ch,
+      (size.width * (FULL_M - CANVAS.side)) / cw,
+      (size.height * (FULL_M - CANVAS.top)) / ch,
+      size.width,
+      size.height,
+    );
+    cam.updateProjectionMatrix();
+  }, [camera, size]);
+  return null;
 }
 
 function Scene({ engine, head, led, onReady }: Omit<RendererProps, "paused">) {
   const { gl, scene } = useThree();
   const mats = useMaterials();
+  const torso = useRef<THREE.Group>(null);
   const pivot = useRef<THREE.Group>(null);
   const monitorRef = useRef<THREE.Group>(null);
   const frames = useRef(0);
-  const angle = useRef({ yaw: HEAD.restYawDeg, pitch: HEAD.restPitchDeg });
+  const bodyLoaded = useRef(false);
+  const angle = useRef({ yaw: HEAD.restYawDeg, pitch: HEAD.restPitchDeg, torso: 0 });
   const lastVersion = useRef(-1);
   const updateCables = useRef<(() => void) | null>(null);
+  const updateNeck = useRef<(() => void) | null>(null);
 
   const screenTex = useMemo(() => {
     const t = new THREE.CanvasTexture(engine.canvas);
@@ -359,46 +606,95 @@ function Scene({ engine, head, led, onReady }: Omit<RendererProps, "paused">) {
     };
   }, [gl, scene]);
 
-  const pivotPos = useMemo(() => src2world(PIVOT.x, PIVOT.y, 0), []);
+  // the monitor casts a soft shadow on the neck
+  useEffect(() => {
+    monitorRef.current?.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) o.castShadow = true;
+    });
+  }, []);
 
-  useFrame((_, dt) => {
+  const pivotPos = useMemo(() => torsoLocal(at(PIVOT.x, PIVOT.y, 0)), []);
+
+  useFrame((state, dt) => {
     const now = performance.now();
+    const a = angle.current;
+    const step = Math.min(dt, 0.1);
+    if (head.frozen) {
+      a.yaw = HEAD.restYawDeg;
+      a.pitch = HEAD.restPitchDeg;
+      a.torso = HEAD.restYawDeg * TORSO.follow;
+    } else {
+      const k = 1 - Math.exp(-HEAD.damping * step);
+      a.yaw += (head.yaw - a.yaw) * k;
+      a.pitch += (head.pitch - a.pitch) * k;
+      const kt = 1 - Math.exp(-TORSO.damping * step);
+      a.torso += (a.yaw * TORSO.follow - a.torso) * kt;
+    }
+    engine.setGaze(a.yaw / HEAD.maxYawDeg, a.pitch / HEAD.maxPitchDeg);
     if (engine.draw(now) || engine.version !== lastVersion.current) {
       lastVersion.current = engine.version;
       screenTex.needsUpdate = true;
     }
-    const a = angle.current;
-    if (head.frozen) {
-      a.yaw = HEAD.restYawDeg;
-      a.pitch = HEAD.restPitchDeg;
-    } else {
-      const k = 1 - Math.exp(-HEAD.damping * Math.min(dt, 0.1));
-      a.yaw += (head.yaw - a.yaw) * k;
-      a.pitch += (head.pitch - a.pitch) * k;
-    }
+
     let nod = 0;
     const sinceNod = now - head.nodAt;
     if (!head.frozen && sinceNod >= 0 && sinceNod < T.nod) {
       nod = Math.sin((sinceNod / T.nod) * Math.PI) * HEAD.nodPitchDeg;
     }
-    if (pivot.current) {
-      pivot.current.rotation.set((a.pitch + nod) * DEG, a.yaw * DEG, 0, "YXZ");
+    const breathe = head.frozen ? 0 : Math.sin((now / T.breathePeriod) * Math.PI * 2);
+    if (torso.current) {
+      torso.current.rotation.set(
+        a.pitch * TORSO.pitchFollow * DEG,
+        a.torso * DEG,
+        -a.torso * TORSO.roll * DEG,
+      );
+      torso.current.position.set(TP.x + a.torso * TORSO.shift, TP.y + breathe * TORSO.breathe, TP.z);
     }
+    if (pivot.current) {
+      // the head's own turn is what is left after the torso's
+      pivot.current.rotation.set(
+        (a.pitch * (1 - TORSO.pitchFollow) + nod) * DEG,
+        (a.yaw - a.torso) * DEG,
+        a.torso * TORSO.roll * DEG,
+        "YXZ",
+      );
+    }
+    updateNeck.current?.();
     updateCables.current?.();
-    if (++frames.current === 3) onReady();
+    if (bodyLoaded.current && ++frames.current === 3) onReady();
+    void state;
   });
 
   return (
     <>
+      <Framing />
       <ambientLight intensity={0.25} />
-      <directionalLight position={[-8, 9, 11]} intensity={2.8} />
+      <directionalLight
+        position={[-8, 9, 11]}
+        intensity={2.8}
+        castShadow
+        shadow-mapSize={[1024, 1024]}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.03}
+        shadow-radius={6}
+        shadow-camera-left={-6}
+        shadow-camera-right={6}
+        shadow-camera-top={6}
+        shadow-camera-bottom={-6}
+        shadow-camera-near={1}
+        shadow-camera-far={40}
+      />
       <directionalLight position={[9, 1, 5]} intensity={0.5} color="#dfe6ff" />
-      <group ref={pivot} position={pivotPos}>
-        <group ref={monitorRef} position={[0, M.lift, M.zOffset + M.d / 2]} scale={M.scale}>
-          <Monitor mats={mats} screenMat={screenMat} led={led} />
+      <group ref={torso} position={TP}>
+        <BodyPlate onLoad={() => (bodyLoaded.current = true)} />
+        <Neck head={pivot} mats={mats} updater={updateNeck} />
+        <group ref={pivot} position={pivotPos}>
+          <group ref={monitorRef} position={[0, M.lift, M.zOffset + M.d / 2]} scale={M.scale}>
+            <Monitor mats={mats} screenMat={screenMat} led={led} />
+          </group>
         </group>
       </group>
-      <Cables head={monitorRef} mats={mats} updater={updateCables} />
+      <Cables head={monitorRef} torso={torso} mats={mats} updater={updateCables} />
     </>
   );
 }
@@ -407,9 +703,10 @@ export default function Crt3D({ paused, ...rest }: RendererProps) {
   return (
     <Canvas
       frameloop={paused ? "never" : "always"}
-      dpr={[1, 1.75]}
+      dpr={[1, 1.5]}
+      shadows
       gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
-      camera={{ fov: FOV, position: [0, 0, CAM_Z], near: 1, far: 200 }}
+      camera={{ manual: true, fov: FOV, position: [0, 0, CAM_Z], near: 1, far: 200 }}
       onCreated={({ gl }) => {
         gl.toneMapping = THREE.ACESFilmicToneMapping;
         gl.toneMappingExposure = 1.05;

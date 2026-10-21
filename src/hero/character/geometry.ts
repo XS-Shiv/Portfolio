@@ -29,16 +29,17 @@ export const LEDS: [number, number][] = [
   [985, 705],
 ];
 
-/** The 3D canvas covers the box plus this margin on every side, so turns never clip. */
-export const CANVAS_MARGIN = 0.16;
+/**
+ * The 3D canvas covers the box plus these margins (fractions of the box), so turns never clip
+ * and the sweater can run past the bottom of the box on tall phones.
+ */
+export const CANVAS = { side: 0.16, top: 0.16, bottom: 0.4 };
 
 /** Neck top: the head turns around this point. */
 export const PIVOT = { x: 656, y: 772 };
 
-/** Where the 3D cables meet the sweater (they continue as cables in the photo). */
-export const CABLE_ENDS: [number, number][] = [
-  [557, 803],
-  [596, 832],
-  [393, 869],
-  [421, 858],
-];
+/** Neck span in the photo, and the row it disappears into the turtleneck. */
+export const NECK = { left: 541, right: 772, bottom: 905 };
+
+/** The torso turns around this point (middle of the chest). */
+export const TORSO_PIVOT = { x: 656, y: 1150 };

@@ -4,12 +4,10 @@
  */
 export const T = {
   // State 1: idle
-  hintDelay: 4000, // bottom "move your cursor" hint fades in
-  nudgeMin: 6000, // a screen nudge every 6–8s without a start
-  nudgeMax: 8000,
+  nudgeMin: 5000, // something new on the screen every 5–7s without a start
+  nudgeMax: 7000,
   nudgeFlicker: 160, // CRT flicker before each nudge
-  sideHintEvery: 14000, // "psst… click the screen" beside the monitor
-  sideHintFor: 3200,
+  imagePop: 2600, // how long a picture stays on the screen
 
   // Transition: booting
   powerOn: 280, // scan-line flash
@@ -38,16 +36,26 @@ export const T = {
 
 /** Head follow. */
 export const HEAD = {
-  maxYawDeg: 25,
-  maxPitchDeg: 15, // looking down
-  maxPitchUpDeg: 10, // looking up shows the neck, so a little less
-  damping: 4, // exponential damping λ; ~250ms to 63% of the way
-  restYawDeg: 22, // no pointer yet: slightly turned, like the photo
-  restPitchDeg: 4,
-  conversationYawBiasDeg: -9, // State 2: leans toward the left column
+  maxYawDeg: 18,
+  maxPitchDeg: 9, // looking down
+  maxPitchUpDeg: 6, // looking up shows the neck, so a little less
+  damping: 2.2, // exponential damping λ; ~450ms to 63% of the way, so it eases rather than snaps
+  restYawDeg: 16, // no pointer yet: slightly turned, like the photo
+  restPitchDeg: 3,
+  conversationYawBiasDeg: -7, // State 2: leans toward the left column
   nodPitchDeg: 8,
   breathePx: 1.5,
 } as const;
+
+/** How the body follows the head. */
+export const TORSO = {
+  follow: 0.28, // share of the head's turn the shoulders take
+  damping: 1.4, // slower than the head, so the body trails it
+  roll: 0.12, // shoulders dip a little into the turn
+  shift: 0.012, // and slide sideways (world units per degree)
+  pitchFollow: 0.15,
+  breathe: 0.016, // ~1.6px
+};
 
 /** Motion curves (cubic-bezier control points). */
 export const EASE = {

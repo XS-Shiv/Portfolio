@@ -6,7 +6,7 @@ import type React from "react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ScreenEngine } from "../screen/engine";
 import { EASE } from "../timings";
-import { BODY_SIZE, BODY_TOP, CANVAS_MARGIN, LEDS, SCREEN_QUAD, SRC } from "./geometry";
+import { CANVAS, LEDS, SCREEN_QUAD, SRC } from "./geometry";
 import { quadToMatrix3d } from "./quad";
 import type { HeadControl } from "./types";
 
@@ -95,42 +95,26 @@ export function Character({ engine, head, led, target, transition, fadeBody, pau
       }
       data-fade={fadeBody ? "on" : "off"}
     >
+      {mode === "3d" && (
+        <div
+          className="character-canvas"
+          style={{
+            top: `${-CANVAS.top * 100}%`,
+            left: `${-CANVAS.side * 100}%`,
+            right: `${-CANVAS.side * 100}%`,
+            bottom: `${-CANVAS.bottom * 100}%`,
+            opacity: ready3d ? 1 : 0,
+          }}
+        >
+          {engine && (
+            <Crt3D engine={engine} head={head} led={led} paused={paused} onReady={() => setReady3d(true)} />
+          )}
+        </div>
+      )}
       <div className="character-breathe">
-        {mode === "3d" && (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className="character-body"
-              src="/character/body.webp"
-              alt=""
-              draggable={false}
-              style={{
-                top: `${(BODY_TOP / SRC) * 100}%`,
-                height: `${(BODY_SIZE.h / SRC) * 100}%`,
-              }}
-            />
-            <div
-              className="character-canvas"
-              style={{
-                inset: `${-CANVAS_MARGIN * 100}%`,
-                opacity: ready3d ? 1 : 0,
-              }}
-            >
-              {engine && (
-                <Crt3D
-                  engine={engine}
-                  head={head}
-                  led={led}
-                  paused={paused}
-                  onReady={() => setReady3d(true)}
-                />
-              )}
-            </div>
-          </>
-        )}
         <StaticCharacter engine={engine} led={led} visible={showStatic} size={home?.s ?? 0} paused={paused} />
-        {children}
       </div>
+      {children}
     </motion.div>
   );
 }
