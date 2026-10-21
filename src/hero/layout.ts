@@ -33,6 +33,8 @@ export function talkBox(vw: number, vh: number): { box: Box; columnTop: number }
   }
   // stays big, like State 1, and steps to the right of the conversation
   const idle = idleBox(vw, vh);
-  const s = idle.s * 0.96;
-  return { box: place(s, vw * 0.67, vh * 0.47), columnTop: 0 };
+  // a touch smaller and further right than before, so a head turned toward the
+  // text never swings into the column
+  const s = idle.s * 0.92;
+  return { box: place(s, vw * 0.71, vh * 0.48), columnTop: 0 };
 }

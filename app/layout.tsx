@@ -1,3 +1,4 @@
+import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/inter-tight/400.css";
 import "@fontsource/vt323/400.css";
 import "./globals.css";
@@ -23,7 +24,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#E6E6E6",
+  themeColor: "#D6D6D6",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
