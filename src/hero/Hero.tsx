@@ -16,7 +16,6 @@ import { EASE, HEAD, T, TAP_SLOP } from "./timings";
 const clamp = (v: number, a = -1, b = 1) => Math.min(b, Math.max(a, v));
 const isPunct = (ch: string) => ".,?!".includes(ch);
 const arrive = { duration: 0.3, ease: EASE.arrive };
-const pad = (i: number) => String(i + 1).padStart(2, "0");
 
 function useMedia(query: string) {
   const [match, setMatch] = useState(false);
@@ -699,7 +698,7 @@ export default function Hero() {
               aria-label="Explore"
               exit={{ opacity: 0, transition: { duration: 0.18 } }}
             >
-              {intro.cards.map((c, i) => (
+              {intro.cards.map((c) => (
                 <motion.button
                   key={c.id}
                   type="button"
@@ -707,16 +706,10 @@ export default function Hero() {
                   onClick={() => goTo(c.id)}
                   {...reveal}
                 >
-                  <span className="card-head">
-                    <span className="card-num" aria-hidden>
-                      {pad(i)}
-                    </span>
-                    <span className="card-label">
-                      <Typed full={c.label} shown={c.label.slice(0, cardChars)} k={null} />
-                    </span>
-                    <span className="card-arrow" aria-hidden>
-                      <Arrow size={16} />
-                    </span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img className="card-img" src={c.image} alt="" draggable={false} />
+                  <span className="card-label">
+                    <Typed full={c.label} shown={c.label.slice(0, cardChars)} k={null} />
                   </span>
                   <span className="card-sub">
                     <Typed
@@ -728,25 +721,6 @@ export default function Hero() {
                 </motion.button>
               ))}
             </motion.nav>
-          )}
-        </AnimatePresence>
-
-        {/* the cue that the page now scrolls */}
-        <AnimatePresence>
-          {done && !scrolled && (
-            <motion.button
-              type="button"
-              className="scroll-cue"
-              data-ui
-              onClick={() => goTo(sections[0].id)}
-              {...reveal}
-              exit={{ opacity: 0, transition: { duration: 0.2 } }}
-            >
-              <span aria-hidden>{">\u00a0"}</span>
-              {intro.scroll.replace(/_$/, "")}
-              <span className="caret caret-block" aria-hidden />
-              <span className="scroll-line" aria-hidden />
-            </motion.button>
           )}
         </AnimatePresence>
 

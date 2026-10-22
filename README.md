@@ -19,8 +19,8 @@ Everything the site says lives in [`src/hero/content.ts`](src/hero/content.ts): 
 
 ## How State 2 works
 
-- Everything types in: title, subtitle, then the two serif lines; then the main button, restart and the three glass cards land together (about 2.5 seconds from the click).
-- Once State 2 is up the page scrolls. Below the hero there is one section per card, then a contact block. "View my work", the cards and the scroll cue all scroll to their section. Restart goes back to the top and State 1, and locks scrolling again.
+- Everything types in: title, subtitle, then the two serif lines; then the main button, restart and the three glass photo cards land together (about 2.5 seconds from the click).
+- Once State 2 is up the page scrolls. Below the hero there is one section per card, then a contact block. "View my work" and the cards scroll to their section. Restart goes back to the top and State 1, and locks scrolling again.
 - About every 3 seconds one pronoun flips I -> we (my -> our, myself -> ourselves) with a glitch, then flips back. The word list is in [`src/hero/pronouns.ts`](src/hero/pronouns.ts), the timing in `timings.ts`.
 
 ## Music

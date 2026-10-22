@@ -20,6 +20,8 @@ export type Card = {
   id: string;
   label: string;
   sub: string;
+  /** Photo behind the card text, shown dark and grey. */
+  image: string;
 };
 
 export type Section = {
@@ -82,22 +84,24 @@ export const intro = {
     "I let it handle the introduction\nIn hindsight, that was generous",
   ],
   primary: "View my work",
-  scroll: "SCROLL_",
   cards: [
     {
       id: "situation",
       label: "The human–machine situation",
       sub: "I build with AI\nIt has started building a case for itself",
+      image: "/screen/three-quarter.webp",
     },
     {
       id: "behind",
       label: "The human behind the screen",
       sub: "Before the machine takes full credit, there's a human story worth knowing",
+      image: "/screen/side.webp",
     },
     {
       id: "notes",
       label: "Notes from the machine",
       sub: "Thoughts on products, technology, and the occasional disagreement between human and machine",
+      image: "/screen/back.webp",
     },
   ] as Card[],
 };

@@ -53,3 +53,7 @@ A short, evenly lit, bright neck reads as a flat block. The photo's neck is a wa
 ## Scrolling a page whose hero is a fixed stage
 
 The hero used to be `position: fixed` with the whole document locked. Now the hero is an ordinary 100dvh block and `<html data-scroll>` decides whether the page may scroll ("on" only in State 2). The character keeps working because its box is laid out relative to the hero, which sits at the top of the document; the cursor's y has `scrollY` added before aiming the head; and the 3D pauses once the hero has scrolled out of view. The top bar is `position: fixed` and gets a frosted backing as soon as the page moves.
+
+## Keep the 3D canvas no bigger than it needs to be
+
+The canvas covers the character box plus margins (`CANVAS` in geometry.ts). Widening the sides to 0.34 for the scaled-up torso made it about 7 million pixels with shadows on a 1920 screen, enough to make the whole page, scrolling included, feel stuck on a modest GPU. With the torso back at its photographed size, 0.18 is enough. Headless tests here render WebGL in software, so they cannot judge scroll smoothness: every wheel listener on the page is passive, which is what matters on real hardware.

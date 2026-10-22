@@ -1,6 +1,6 @@
 import "@fontsource-variable/archivo/wdth.css";
 import "@fontsource/martian-mono/300.css";
-import "@fontsource/instrument-serif/400.css";
+import "@fontsource-variable/newsreader/opsz.css";
 import "@fontsource/vt323/400.css";
 import "./globals.css";
 import type { Metadata, Viewport } from "next";

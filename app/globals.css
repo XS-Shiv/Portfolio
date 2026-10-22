@@ -12,7 +12,7 @@
   --color-paper: #ededed;
   --font-sans: "Archivo Variable", "Archivo", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Martian Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --font-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --font-serif: "Newsreader Variable", "Newsreader", ui-serif, Georgia, serif;
 }
 
 @property --fade {
@@ -557,15 +557,17 @@ body {
 .intro-body p {
   margin: 0;
   font-family: var(--font-serif);
-  font-size: clamp(21px, 1.72vw, 29px);
-  line-height: 1.16;
-  letter-spacing: -0.005em;
-  color: #262626;
+  font-optical-sizing: auto;
+  font-size: clamp(18px, 1.32vw, 23px);
+  font-weight: 400;
+  line-height: 1.38;
+  letter-spacing: -0.01em;
+  color: #2b2b2b;
   white-space: pre-line;
 }
 
 .intro-body p + p {
-  margin-top: 14px;
+  margin-top: 12px;
 }
 
 .cta-row {
@@ -669,144 +671,96 @@ body {
   mix-blend-mode: screen;
 }
 
-/* ---------- the three cards: frosted glass over the sweater ---------- */
+/* ---------- the three cards: clear glass over the sweater, with a photo ---------- */
 
 .cards {
   position: absolute;
   right: calc(var(--inset) + 1vw);
   bottom: calc(var(--inset) + 6px);
   display: flex;
-  gap: 14px;
+  gap: 12px;
   z-index: 4;
 }
 
+/* three cards plus gaps stay inside the right half of the screen */
 .card {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  width: clamp(300px, 22vw, 350px);
-  padding: 16px 18px 17px;
-  border: 1px solid rgba(255, 255, 255, 0.26);
+  align-items: flex-start;
+  gap: 10px;
+  width: clamp(196px, 14.6vw, 252px);
+  min-height: 150px;
+  padding: 15px 16px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.34);
   border-radius: 16px;
   background:
-    linear-gradient(140deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.03) 55%),
-    rgba(20, 22, 28, 0.52);
-  -webkit-backdrop-filter: blur(22px) saturate(1.5);
-  backdrop-filter: blur(22px) saturate(1.5);
+    linear-gradient(150deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02) 60%),
+    rgba(14, 16, 20, 0.18);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
-    0 24px 48px -24px rgba(0, 0, 0, 0.55);
+    0 20px 40px -22px rgba(0, 0, 0, 0.5);
   color: #fff;
   font: inherit;
   text-align: left;
+  overflow: hidden;
   cursor: pointer;
   transition:
     transform 0.3s var(--ease-arrive),
-    border-color 0.3s,
-    background-color 0.3s;
+    border-color 0.3s;
 }
 
 .card:hover {
   transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.6);
 }
 
 .card:focus-visible {
   border-radius: 16px;
 }
 
-/* number, title and arrow on one line; the subtext below */
-.card-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  width: 100%;
+.card-img {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 58%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 35% 30%;
+  filter: grayscale(1) brightness(0.62) contrast(1.2);
+  opacity: 0.85;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 60%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 60%);
+  pointer-events: none;
+  transition: transform 0.6s var(--ease-arrive);
 }
 
-.card-num {
-  flex: none;
-  font-family: var(--font-mono);
-  font-weight: 300;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: rgba(255, 255, 255, 0.6);
+.card:hover .card-img {
+  transform: scale(1.05);
+}
+
+.card-label,
+.card-sub {
+  position: relative;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.35);
 }
 
 .card-label {
-  flex: 1;
-  min-width: 0;
-  font-size: clamp(14.5px, 1.04vw, 17px);
+  max-width: 12em;
+  font-size: clamp(14px, 1.02vw, 16.5px);
   font-weight: 600;
-  line-height: 1.2;
+  line-height: 1.18;
   letter-spacing: -0.015em;
-  white-space: nowrap;
-}
-
-.card-arrow {
-  flex: none;
-  align-self: center;
-  display: grid;
-  color: rgba(255, 255, 255, 0.85);
-  transition: transform 0.25s var(--ease-arrive);
-}
-
-.card:hover .card-arrow {
-  transform: translateX(3px);
 }
 
 .card-sub {
-  padding-left: 27px;
-  font-size: 13px;
-  line-height: 1.42;
-  color: rgba(255, 255, 255, 0.8);
+  max-width: 15em;
+  font-size: clamp(11.5px, 0.82vw, 13px);
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.86);
   white-space: pre-line;
-}
-
-/* ---------- the scroll cue ---------- */
-
-.scroll-cue {
-  position: absolute;
-  left: calc(var(--inset) + 2vw);
-  bottom: var(--inset);
-  z-index: 4;
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 0;
-  border: 0;
-  background: none;
-  font-family: var(--font-mono);
-  font-weight: 300;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  color: #333;
-  cursor: pointer;
-}
-
-.scroll-line {
-  position: relative;
-  width: 44px;
-  height: 1px;
-  margin-left: 14px;
-  overflow: hidden;
-  background: rgba(0, 0, 0, 0.15);
-}
-
-.scroll-line::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: #111;
-  transform: translateX(-100%);
-  animation: scroll-run 1.8s var(--ease-settle) infinite;
-}
-
-@keyframes scroll-run {
-  60%,
-  100% {
-    transform: translateX(100%);
-  }
 }
 
 /* ---------- below the hero ---------- */
@@ -1014,21 +968,18 @@ body {
   }
   .card {
     flex: none;
-    width: 270px;
-    padding: 13px 14px 14px;
-    gap: 6px;
+    width: 210px;
+    min-height: 128px;
+    padding: 12px 13px 13px;
+    gap: 7px;
     border-radius: 14px;
     scroll-snap-align: start;
   }
   .card-label {
-    font-size: 14.5px;
+    font-size: 14px;
   }
   .card-sub {
-    padding-left: 24px;
-    font-size: 12px;
-  }
-  .scroll-cue {
-    display: none;
+    font-size: 11.5px;
   }
 
   /* On phones State 2 flows: the hero grows to fit, and the page itself scrolls. */
@@ -1104,7 +1055,6 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .character-breathe,
-  .scroll-line::after,
   .caret,
   .glitch,
   .glitch::before,
@@ -1124,7 +1074,7 @@ body {
   .restart,
   .cta-main,
   .card,
-  .card-arrow {
+  .card-img {
     transition: none;
   }
 }

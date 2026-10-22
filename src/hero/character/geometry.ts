@@ -33,7 +33,7 @@ export const LEDS: [number, number][] = [
  * The 3D canvas covers the box plus these margins (fractions of the box), so turns never clip
  * and the sweater can run past the bottom of the box on tall phones.
  */
-export const CANVAS = { side: 0.34, top: 0.16, bottom: 0.4 };
+export const CANVAS = { side: 0.18, top: 0.16, bottom: 0.4 };
 
 /** Neck top: the head turns around this point. */
 export const PIVOT = { x: 656, y: 772 };
