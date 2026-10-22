@@ -31,27 +31,27 @@ export function talkBox(vw: number, vh: number): { box: Box; columnTop: number }
     const columnTop = Math.max(box.y + (900 / SRC) * s, vh * 0.36);
     return { box, columnTop };
   }
-  // The machine is overpowering: as big as the space between the text and the
-  // top-right buttons allows, its top almost touching the top edge.
+  // The machine is overpowering: same head-to-body proportions as State 1, but
+  // a big head (about 62% of the screen's height), as large as the space between
+  // the text column and the right edge allows. Its cables never reach the text.
   const inset = 40;
   const pad = inset + vw * 0.02; // matches the top bar's side padding
-  const textEnd = pad + Math.min(vw * 0.3, 480) + 24; // the text column, plus a gap
-  const buttonsStart = vw - pad - 220; // the sound and Let's talk buttons
+  const textEnd = pad + Math.min(vw * 0.34, 540) + 28; // the text column (see .column), plus a gap
+  const buttonsStart = vw - pad - 236; // the sound and Let's talk buttons
   const reach = MONITOR_W + 0.1; // the monitor plus its cables looping out on the left
+  const want = (vh * 0.62) / MONITOR_H;
 
-  // (the 3D monitor draws about 40px below its box top, so these sit a little high)
-  let s = Math.min((vh * 0.54) / MONITOR_H, (buttonsStart - textEnd) / reach);
-  let top = vh * 0.05;
-  // On narrower screens the buttons squeeze it; drop it just below the top bar
-  // instead, where it can stay big.
-  const below = Math.min((vh * 0.52) / MONITOR_H, (vw - pad - textEnd) / reach);
-  if (below > s * 1.08) {
-    s = below;
-    top = 60;
-  }
-  const right = top < 56 ? buttonsStart : vw - pad;
+  // Either it sits at the very top, beside the buttons...
+  const besideButtons = Math.min(want, (buttonsStart - textEnd) / reach);
+  // ...or, when the buttons would squeeze it, just below the top bar.
+  const belowBar = Math.min((vh * 0.58) / MONITOR_H, (vw - pad - textEnd) / reach);
+  const below = belowBar > besideButtons * 1.06;
+  const s = below ? belowBar : besideButtons;
+  const top = below ? 92 : vh * 0.025;
+  const right = below ? vw - pad : buttonsStart;
+
   const lo = textEnd + s * (MONITOR_W / 2 + 0.1);
   const hi = right - (s * MONITOR_W) / 2;
-  const cx = Math.min(Math.max(vw * 0.58, lo), Math.max(lo, hi));
+  const cx = Math.min(Math.max(vw * 0.6, lo), Math.max(lo, hi));
   return { box: place(s, cx, top + (s * MONITOR_H) / 2), columnTop: 0 };
 }

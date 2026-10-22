@@ -15,13 +15,17 @@ No environment variables are needed.
 
 ## Change the words
 
-Everything the site says lives in [`src/hero/content.ts`](src/hero/content.ts): the status line, the contact links, the screen text and the State 2 introduction (title, subtitle, body lines, the main button and the three cards). All of it types in like a typewriter: the title, subtitle and body one after another, then the three cards together. The copy has no full stops on purpose.
+Everything the site says lives in [`src/hero/content.ts`](src/hero/content.ts): the status line, the State 2 introduction, the three cards, the sections below the hero, the closing contact block and the contact links. The copy has no full stops on purpose; where a line holds two sentences, `\n` puts them on two lines.
 
-For now the "View my work" button and the three cards do nothing when clicked. They are real buttons, so wiring them to sections later only needs an `onClick` in `Hero.tsx`.
+## How State 2 works
 
-### The "I <-> we" flip
+- Everything types in: title, subtitle, then the two serif lines; then the main button, restart and the three glass cards land together (about 2.5 seconds from the click).
+- Once State 2 is up the page scrolls. Below the hero there is one section per card, then a contact block. "View my work", the cards and the scroll cue all scroll to their section. Restart goes back to the top and State 1, and locks scrolling again.
+- About every 3 seconds one pronoun flips I -> we (my -> our, myself -> ourselves) with a glitch, then flips back. The word list is in [`src/hero/pronouns.ts`](src/hero/pronouns.ts), the timing in `timings.ts`.
 
-Once State 2 has settled, every 6 to 11 seconds one pronoun in the visible text flips into its opposite (I to we, my to our, we to I) with a glitch, then flips back. It blurs who is talking, the human or the machine. The word list is in [`src/hero/pronouns.ts`](src/hero/pronouns.ts) and the timing in `timings.ts`.
+## Music
+
+The background track is `public/audio/the-mountain.mp3` ("The Mountain", 96 seconds, looped, re-encoded to 128 kbps). It starts with the visitor's first click into State 2, fading in, unless they have already turned the speaker off. Swap the file to change the music; the level is `MUSIC_LEVEL` in [`src/hero/sound.ts`](src/hero/sound.ts).
 
 ## Change the pictures on the screen
 
@@ -51,7 +55,7 @@ Add `?nowebgl` to the URL to see the photo fallback that browsers without WebGL 
 | `src/hero/screen/engine.ts` | Draws the monitor screen live on a canvas: stars, text, caret, flicker, power-on, the face |
 | `src/hero/character/Character.tsx` | The one `<Character />` interface: photo first, then the 3D head |
 | `src/hero/character/Crt3D.tsx` | The procedural 3D monitor (React Three Fiber). Swap for a GLB here |
-| `src/hero/sound.ts` | A soft, slow instrumental synthesised live (electric-piano arpeggio, round bass, faint pad, a few melody notes, soft reverb), plus a soft power-on swell and a faint glitch crackle. Off until the top-bar speaker is pressed |
+| `src/hero/sound.ts` | The background track (looped, faded through a gain node so it also fades on iOS), plus a soft power-on swell and a faint glitch crackle |
 | `scripts/make_plates.py` | Rebuilds `public/character/body.*` and `front-blank.*` from `front.png` |
 
 Details: [requirements](docs/plans/2026-10-20-1931-feat-crt-hero-plan.md), [visual direction](docs/design/hero-direction.md), [lessons learned](docs/learnings.md).

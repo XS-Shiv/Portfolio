@@ -1,25 +1,37 @@
 /**
- * All words on the hero live here. Edit freely; no component needs to change.
+ * All words on the site live here. Edit freely; no component needs to change.
  *
  * State 2 reads top to bottom: a status line in the top bar, the title,
- * subtitle and two body lines (all typed in, one after another), one main
- * button with the restart button beside it, and three cards that type in
- * together. No full stops: the lines read like spoken fragments.
- * The buttons and cards do nothing yet; they will open sections later.
+ * subtitle and two serif lines (all typed in, one after another), the main
+ * button with restart beside it, and three glass cards. Once State 2 is up the
+ * page scrolls: below the hero come one section per card, then a contact block.
  *
- * Every few seconds, once everything has appeared, one pronoun in the visible
- * text flips I <-> we (or my <-> our) with a glitch and flips back. That is the
- * recurring "human but a machine" device; see pronouns.ts.
+ * No full stops anywhere: where a line has two sentences, "\n" breaks it into
+ * two lines instead.
+ *
+ * Every few seconds one pronoun in the visible text flips I -> we (or my -> our)
+ * with a glitch and flips back; see pronouns.ts.
  */
 
 export type Link = { label: string; href: string };
 
 export type Card = {
+  /** Also the id of the section it scrolls to. */
   id: string;
   label: string;
   sub: string;
-  /** Photo behind the card text, shown dark and grey. */
-  image: string;
+};
+
+export type Section = {
+  id: string;
+  number: string;
+  /** The machine's terminal line above the section. */
+  status: string;
+  title: string;
+  line: string;
+  /** A short note while the full section is being written. */
+  note: string;
+  links: Link[];
 };
 
 export const site = {
@@ -63,33 +75,72 @@ export const status = {
 
 export const intro = {
   /** Typed in order: the title, then the subtitle. */
-  lines: ["Hey, I'm Shiv", "This is my portfolio"],
+  lines: ["Hey, I'm Shiv", "I make decisions for a living"],
+  /** The two serif lines, equal weight, typed after the subtitle. */
   body: [
-    "The machine would like you to believe it had more input",
-    // "\n" sets where the line breaks on wide screens
-    "I let it handle the introduction,\nin hindsight that was generous",
+    "At least, I used to make all of them myself\nThe machine has started developing opinions",
+    "I let it handle the introduction\nIn hindsight, that was generous",
   ],
   primary: "View my work",
+  scroll: "SCROLL_",
   cards: [
     {
       id: "situation",
-      label: "The human-machine situation",
-      sub: "Things I built with AI, or things we built",
-      image: "/screen/three-quarter.webp",
+      label: "The human–machine situation",
+      sub: "I build with AI\nIt has started building a case for itself",
     },
     {
       id: "behind",
-      label: "Who's behind the screen?",
-      sub: "The original human, last time I checked",
-      image: "/screen/side.webp",
+      label: "The human behind the screen",
+      sub: "Before the machine takes full credit, there's a human story worth knowing",
     },
     {
-      id: "thoughts",
-      label: "Thoughts from the machine",
-      sub: "My thoughts, mostly (we think)",
-      image: "/screen/back.webp",
+      id: "notes",
+      label: "Notes from the machine",
+      sub: "Thoughts on products, technology, and the occasional disagreement between human and machine",
     },
   ] as Card[],
+};
+
+/** One section per card, in the same order, reached by scrolling. */
+export const sections: Section[] = [
+  {
+    id: "situation",
+    number: "01",
+    status: "ACCESSING BUILD LOGS_",
+    title: "The human–machine situation",
+    line: "I build with AI\nIt has started building a case for itself",
+    note: "The build logs are being written up, the machine insists on one more polish",
+    links: [
+      { label: "See the code on GitHub", href: "https://github.com/XS-Shiv" },
+      { label: "Design case studies", href: "https://shivanand.framer.website" },
+    ],
+  },
+  {
+    id: "behind",
+    number: "02",
+    status: "SCANNING FOR HUMAN_",
+    title: "The human behind the screen",
+    line: "Before the machine takes full credit, there's a human story worth knowing",
+    note: "The long version is being written, by the human this time",
+    links: [{ label: "Find me on LinkedIn", href: "https://www.linkedin.com/in/shivanand-shukla" }],
+  },
+  {
+    id: "notes",
+    number: "03",
+    status: "READING THOUGHTS.TXT_",
+    title: "Notes from the machine",
+    line: "Thoughts on products, technology, and the occasional disagreement between human and machine",
+    note: "Essays on AI, design and attention economics",
+    links: [{ label: "Read on Medium", href: "https://medium.com/@shivanandisshukla" }],
+  },
+];
+
+export const outro = {
+  status: "END OF TRANSMISSION_",
+  title: "Let's talk",
+  line: "The human reads every message\nThe machine just forwards them",
+  top: "Back to the machine",
 };
 
 export const hints = {

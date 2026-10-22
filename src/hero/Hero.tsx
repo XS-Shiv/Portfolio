@@ -5,7 +5,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Character, type Box } from "./character/Character";
 import { HEAD_CENTER, SRC } from "./character/geometry";
 import type { HeadControl } from "./character/types";
-import { contact, hints, intro, screen, site, status } from "./content";
+import { contact, hints, intro, outro, screen, sections, site, status } from "./content";
 import { isCompact, talkBox } from "./layout";
 import { initialState, ledOf, reducer } from "./machine";
 import { flipAt, flipCount } from "./pronouns";
@@ -127,6 +127,13 @@ export default function Hero() {
   const [announce, setAnnounce] = useState("");
   const [flip, setFlip] = useState<{ slot: string; k: number } | null>(null);
   const [cardChars, setCardChars] = useState(0);
+  /** Scrolled past the top of the hero (hides the status line), or past all of it (pauses the 3D). */
+  const [scrolled, setScrolled] = useState(false);
+  const [heroHidden, setHeroHidden] = useState(false);
+  /** Any scroll at all: the top bar gets a frosted backing so it reads over the content. */
+  const [stuck, setStuck] = useState(false);
+  /** Once the visitor touches the speaker, their choice wins over the automatic start. */
+  const soundTouched = useRef(false);
   const connectBtn = useRef<HTMLButtonElement>(null);
   const mainCta = useRef<HTMLButtonElement>(null);
   const byKey = useRef(false);
@@ -140,6 +147,7 @@ export default function Hero() {
     e.loadImages(screen.images);
     setEngine(e);
     sound.current = new Sound();
+    const preload = window.setTimeout(() => sound.current?.preload(), 2500);
     const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
     onResize();
     window.addEventListener("resize", onResize);
@@ -148,6 +156,7 @@ export default function Hero() {
     return () => {
       window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVis);
+      clearTimeout(preload);
       sound.current?.setEnabled(false);
     };
   }, []);
@@ -160,6 +169,30 @@ export default function Hero() {
   // ---------- layout ----------
   const talk = viewport ? talkBox(viewport.w, viewport.h) : null;
   const target: Box | null = talking ? (talk?.box ?? null) : null;
+
+  // ---------- scrolling: only once State 2 is up ----------
+  useEffect(() => {
+    const on = phase === "conversation";
+    document.documentElement.dataset.scroll = on ? "on" : "off";
+    if (!on) window.scrollTo(0, 0);
+  }, [phase]);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY;
+      const h = window.innerHeight;
+      setStuck(y > 8);
+      setScrolled(y > h * 0.35);
+      setHeroHidden(y > h * 0.98);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const goTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+  };
 
   // ---------- screen + phase choreography ----------
   useEffect(() => {
@@ -302,13 +335,12 @@ export default function Hero() {
     const timers: number[] = [];
     const loop = (first: boolean) => {
       // the first flip comes a little sooner, so a quick visitor still sees one
-      const wait = first ? 2600 : T.flipEveryMin + Math.random() * (T.flipEveryMax - T.flipEveryMin);
+      const wait = first ? 1500 : T.flipEveryMin + Math.random() * (T.flipEveryMax - T.flipEveryMin);
       timers.push(
         window.setTimeout(() => {
           const pick = slots[Math.floor(Math.random() * slots.length)];
           setFlip({ slot: pick.slot, k: Math.floor(Math.random() * pick.count) });
-          engine?.glitch(300);
-          sound.current?.glitch();
+          engine?.glitch(180);
           timers.push(
             window.setTimeout(() => {
               setFlip(null);
@@ -376,7 +408,7 @@ export default function Hero() {
   const down = useRef<{ x: number; y: number; id: number } | null>(null);
   useEffect(() => {
     const move = (e: PointerEvent) => {
-      if (e.pointerType === "mouse" || down.current) aimAt(e.clientX, e.clientY);
+      if (e.pointerType === "mouse" || down.current) aimAt(e.clientX, e.clientY + window.scrollY);
     };
     const leave = (e: MouseEvent) => {
       if (!e.relatedTarget) {
@@ -396,8 +428,13 @@ export default function Hero() {
   const start = useCallback(() => {
     if (phase !== "idle") return;
     setPanel("none");
+    // the click into State 2 is a user gesture, so the music may start here
+    if (!soundTouched.current && !soundOn) {
+      setSoundOn(true);
+      sound.current?.setEnabled(true);
+    }
     dispatch({ type: "START" });
-  }, [phase]);
+  }, [phase, soundOn]);
 
   const isUi = (t: EventTarget | null) =>
     t instanceof Element && !!t.closest("[data-ui], a, button, input, [role='dialog']");
@@ -433,9 +470,13 @@ export default function Hero() {
     return () => window.removeEventListener("keydown", key);
   }, [phase, panel, start]);
 
-  const restart = () => dispatch({ type: "RESTART" });
+  const restart = () => {
+    window.scrollTo(0, 0);
+    dispatch({ type: "RESTART" });
+  };
 
   const toggleSound = () => {
+    soundTouched.current = true;
     const on = !soundOn;
     setSoundOn(on);
     sound.current?.setEnabled(on);
@@ -453,7 +494,8 @@ export default function Hero() {
 
   return (
     <LazyMotion features={domAnimation} strict>
-      <main
+      <main className="page">
+      <section
         className="hero"
         data-phase={phase}
         data-reduced={reduced ? "on" : "off"}
@@ -474,13 +516,13 @@ export default function Hero() {
             instant: reduced,
           }}
           fadeBody={talking && !!talk?.columnTop}
-          paused={paused}
+          paused={paused || heroHidden}
         />
 
         {/* ---------- top bar, every state ---------- */}
-        <header className="chrome" data-ui>
+        <header className="chrome" data-ui data-stuck={stuck ? "on" : "off"}>
           <AnimatePresence mode="wait">
-            {statusText ? (
+            {statusText && !scrolled ? (
               <motion.p
                 key={statusText}
                 className="chrome-status"
@@ -603,7 +645,7 @@ export default function Hero() {
                 {intro.body.map((text, j) => {
                   const i = intro.lines.length + j;
                   return (
-                    <p key={j} className={j === 0 ? "intro-lead" : "intro-aside"} aria-hidden>
+                    <p key={j} aria-hidden>
                       <Typed full={text} shown={textOf(i)} k={flipK(`body-${j}`)} caret={typedUpTo === i} />
                     </p>
                   );
@@ -613,8 +655,13 @@ export default function Hero() {
               <div className="cta-row">
                 {done && (
                   <>
-                    {/* does nothing yet: the work section comes later */}
-                    <motion.button ref={mainCta} type="button" className="cta-main" {...reveal}>
+                    <motion.button
+                      ref={mainCta}
+                      type="button"
+                      className="cta-main"
+                      onClick={() => goTo(sections[0].id)}
+                      {...reveal}
+                    >
                       {intro.primary}
                       <Arrow size={20} />
                     </motion.button>
@@ -643,22 +690,33 @@ export default function Hero() {
           )}
         </AnimatePresence>
 
-        {/* the three ways in; they do nothing yet */}
+        {/* the three ways in: glass cards that scroll to their sections */}
         <AnimatePresence>
           {done && (
-            <motion.div
+            <motion.nav
               className="cards"
               data-ui
-              role="group"
               aria-label="Explore"
               exit={{ opacity: 0, transition: { duration: 0.18 } }}
             >
               {intro.cards.map((c, i) => (
-                <motion.button key={c.id} type="button" className="card" {...reveal}>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img className="card-img" src={c.image} alt="" draggable={false} />
-                  <span className="card-label">
-                    <Typed full={c.label} shown={c.label.slice(0, cardChars)} k={null} />
+                <motion.button
+                  key={c.id}
+                  type="button"
+                  className="card"
+                  onClick={() => goTo(c.id)}
+                  {...reveal}
+                >
+                  <span className="card-head">
+                    <span className="card-num" aria-hidden>
+                      {pad(i)}
+                    </span>
+                    <span className="card-label">
+                      <Typed full={c.label} shown={c.label.slice(0, cardChars)} k={null} />
+                    </span>
+                    <span className="card-arrow" aria-hidden>
+                      <Arrow size={16} />
+                    </span>
                   </span>
                   <span className="card-sub">
                     <Typed
@@ -667,19 +725,110 @@ export default function Hero() {
                       k={flipK(`card-${c.id}`)}
                     />
                   </span>
-                  <span className="card-foot" aria-hidden>
-                    <span className="card-num">{pad(i)}</span>
-                    <Arrow size={16} />
-                  </span>
                 </motion.button>
               ))}
-            </motion.div>
+            </motion.nav>
+          )}
+        </AnimatePresence>
+
+        {/* the cue that the page now scrolls */}
+        <AnimatePresence>
+          {done && !scrolled && (
+            <motion.button
+              type="button"
+              className="scroll-cue"
+              data-ui
+              onClick={() => goTo(sections[0].id)}
+              {...reveal}
+              exit={{ opacity: 0, transition: { duration: 0.2 } }}
+            >
+              <span aria-hidden>{">\u00a0"}</span>
+              {intro.scroll.replace(/_$/, "")}
+              <span className="caret caret-block" aria-hidden />
+              <span className="scroll-line" aria-hidden />
+            </motion.button>
           )}
         </AnimatePresence>
 
         <div className="sr-only" role="status" aria-live="polite">
           {announce}
         </div>
+      </section>
+
+      {/* ---------- below the hero, once State 2 is up ---------- */}
+      {phase === "conversation" && (
+        <div className="sections">
+          {sections.map((sec) => (
+            <section key={sec.id} id={sec.id} className="sec" aria-labelledby={`${sec.id}-title`}>
+              <p className="sec-status" aria-hidden>
+                <span className="sec-num">{sec.number}</span>
+                {"> "}
+                {sec.status.replace(/_$/, "")}
+                <span className="caret caret-block" />
+              </p>
+              <h2 id={`${sec.id}-title`} className="sec-title">
+                {sec.title}
+              </h2>
+              <p className="sec-line">{sec.line}</p>
+              <div className="sec-foot">
+                <p className="sec-note">{sec.note}</p>
+                <div className="sec-links">
+                  {sec.links.map((l) => (
+                    <a key={l.href} href={l.href} target="_blank" rel="noreferrer" className="sec-link">
+                      {l.label}
+                      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden>
+                        <path
+                          d="M7 17 17 7M9 7h8v8"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </section>
+          ))}
+
+          <footer className="outro" aria-labelledby="outro-title">
+            <p className="sec-status" aria-hidden>
+              {"> "}
+              {outro.status.replace(/_$/, "")}
+              <span className="caret caret-block" />
+            </p>
+            <h2 id="outro-title" className="sec-title">
+              {outro.title}
+            </h2>
+            <p className="sec-line">{outro.line}</p>
+            <ul className="outro-links">
+              {contact.map((c) => (
+                <li key={c.label}>
+                  <a href={c.href} target={c.href.startsWith("http") ? "_blank" : undefined} rel="noreferrer">
+                    <span className="panel-label">{c.label}</span>
+                    <span className="outro-value">{c.href.replace(/^mailto:|^https:\/\/(www\.)?/g, "")}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <button type="button" className="outro-top" onClick={() => window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" })}>
+              {outro.top}
+              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden>
+                <path
+                  d="M12 19V5M6.5 10.5 12 5l5.5 5.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.7"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </footer>
+        </div>
+      )}
       </main>
     </LazyMotion>
   );

@@ -263,11 +263,12 @@ function useMaterials() {
       ledOff: new THREE.MeshStandardMaterial({ color: "#76787e", metalness: 0.5, roughness: 0.4 }),
       cable: new THREE.MeshStandardMaterial({ color: "#0d0d0f", metalness: 0.1, roughness: 0.45 }),
       ferrite: new THREE.MeshStandardMaterial({ color: "#1a1a1d", metalness: 0.2, roughness: 0.5 }),
+      // matched to the photo's neck: a warm, fairly dark skin tone, mostly in the monitor's shadow
       skin: new THREE.MeshStandardMaterial({
-        color: "#e8b493",
-        roughness: 0.58,
+        color: "#a7704f",
+        roughness: 0.7,
         metalness: 0,
-        envMapIntensity: 0.45,
+        envMapIntensity: 0.3,
         vertexColors: true,
       }),
     };
@@ -514,18 +515,19 @@ function Neck({
     );
     const old = m.geometry;
     const g = new THREE.TubeGeometry(curve, 16, radius / b, 28, false);
-    // painted-in shading: dark up under the monitor, soft falloff toward the sides and back
+    // painted-in shading, like the photo: lit by the collar, falling into the
+    // monitor's shadow toward the top, and darker round the sides so it reads as round
     const pos = g.attributes.position;
     const nrm = g.attributes.normal;
     const col = new Float32Array(pos.count * 3);
     for (let i = 0; i < pos.count; i++) {
       const t = Math.floor(i / 29) / 16; // 0 at the collar, 1 inside the monitor
-      const under = 1 - 0.7 * smooth(0.35, 0.85, t);
-      const facing = 0.5 + 0.5 * Math.pow(Math.max(0, nrm.getZ(i)), 0.8);
+      const under = 1 - 0.72 * smooth(0.12, 0.62, t);
+      const facing = 0.35 + 0.65 * Math.pow(Math.max(0, nrm.getZ(i)), 0.9);
       const v = under * facing;
       col[i * 3] = v;
-      col[i * 3 + 1] = v * 0.97;
-      col[i * 3 + 2] = v * 0.95;
+      col[i * 3 + 1] = v * 0.95;
+      col[i * 3 + 2] = v * 0.92;
     }
     g.setAttribute("color", new THREE.BufferAttribute(col, 3));
     m.geometry = g;

@@ -45,3 +45,11 @@ Height alone did not do it: the monitor was already taller than in the reference
 ## Scaling the torso without breaking the head
 
 Scaling the torso group scales everything inside it, including depth. Three things went wrong at once: the neck got 1.38x thicker and longer and poked out through the thin monitor's glass when the head turned; the sweater plate moved 1.38x further forward, in front of the head's lower corner; and the cable ends followed it. The fix keeps each in real units inside the scaled group: the neck's radius and reach are divided by the torso scale and it now ends just inside the bottom of the casing; the plate's and cable ends' depth is divided by it too; and the head comes forward a little as the torso grows, while the neck's top stays back behind the collar. Check every change here with the head turned hard toward the text and looking up, and mid-transition.
+
+## The neck has to look like it is in shadow
+
+A short, evenly lit, bright neck reads as a flat block. The photo's neck is a warm, fairly dark tone (about rgb 110, 72, 54) that falls into the monitor's shadow toward the top. The 3D neck's base colour and painted-in vertex shading match that, with darker sides so it reads as round. If the neck's length changes, re-check the shading range (`smooth(...)` on `t`), since it is measured along the neck.
+
+## Scrolling a page whose hero is a fixed stage
+
+The hero used to be `position: fixed` with the whole document locked. Now the hero is an ordinary 100dvh block and `<html data-scroll>` decides whether the page may scroll ("on" only in State 2). The character keeps working because its box is laid out relative to the hero, which sits at the top of the document; the cursor's y has `scrollY` added before aiming the head; and the 3D pauses once the hero has scrolled out of view. The top bar is `position: fixed` and gets a frosted backing as soon as the page moves.

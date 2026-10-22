@@ -14,6 +14,8 @@ const SWAP: Record<string, string> = {
   my: "our",
   My: "Our",
   me: "us",
+  myself: "ourselves",
+  ourselves: "myself",
   "We're": "I'm",
   "we're": "I'm",
   "We've": "I've",
@@ -24,7 +26,7 @@ const SWAP: Record<string, string> = {
   Our: "My",
 };
 
-const WORDS = /\b(I'm|I've|I'd|I'll|We're|we're|We've|we've|I|We|we|my|My|our|Our|me)\b/g;
+const WORDS = /\b(I'm|I've|I'd|I'll|We're|we're|We've|we've|I|We|we|myself|ourselves|my|My|our|Our|me)\b/g;
 
 /** How many words in `text` can flip. */
 export const flipCount = (text: string) => (text.match(WORDS) ?? []).length;
@@ -36,8 +38,8 @@ export function flipAt(text: string, k: number): { before: string; word: string;
     if (i++ !== k || m.index === undefined) continue;
     const before = text.slice(0, m.index);
     let word = SWAP[m[0]] ?? m[0];
-    // capitalise at the start of a sentence
-    if (/(^|[.!?]\s+)$/.test(before)) word = word[0].toUpperCase() + word.slice(1);
+    // capitalise at the start of a sentence or a line
+    if (/(^|[.!?]\s+|\n)$/.test(before)) word = word[0].toUpperCase() + word.slice(1);
     return { before, word, after: text.slice(m.index + m[0].length) };
   }
   return null;
