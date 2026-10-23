@@ -13,7 +13,7 @@ import { initialState, ledOf, reducer } from "./machine";
 import { flipAt, flipCount } from "./pronouns";
 import { ScreenEngine } from "./screen/engine";
 import { savedSoundPref, Sound } from "./sound";
-import { EASE, MOTION, T, TAP_SLOP } from "./timings";
+import { EASE, MOTION, T, TAP_SLOP, VOICE } from "./timings";
 import { Narrator, type Speech } from "./voice";
 
 const DEG = Math.PI / 180;
@@ -278,7 +278,7 @@ export default function Hero() {
         () => {
           engine?.setTalking(true);
           speech.current = narrator.current!.speak(
-            line.text,
+            line,
             (n) => setTyped({ id: line.id, n }),
             () => {
               engine?.setTalking(false);
@@ -286,7 +286,7 @@ export default function Hero() {
             },
           );
         },
-        typedUpTo === 0 ? T.firstLineAt : 140,
+        typedUpTo === 0 ? T.firstLineAt : VOICE.sentence,
       ),
     );
     return () => {
@@ -302,7 +302,7 @@ export default function Hero() {
   // reduced motion: the text is all there at once, and the voice still reads it
   useEffect(() => {
     if (!reduced || phase !== "booting" || !narrator.current) return;
-    const q = narrator.current.queue(transcript.map((l) => l.text));
+    const q = narrator.current.queue(transcript, VOICE.sentence);
     speech.current = q;
     return () => {
       if (speech.current === q) speech.current = null;
@@ -387,38 +387,29 @@ export default function Hero() {
     return () => clearTimeout(id);
   }, [done]);
 
-  // ---------- the occasional I -> we beat ----------
+  // ---------- the occasional I -> we beat, in the headline: "Hey, I'm Shiv." -> "Hey, we're Shiv." ----------
   useEffect(() => {
-    if (!allDone || reduced || section) return;
-    const slots = [
-      ...intro.lines.map((text, i) => ({ slot: `line-${i}`, text, weight: 3 })),
-      ...intro.body.map((text, i) => ({ slot: `body-${i}`, text, weight: 2 })),
-      ...intro.cards.map((c) => ({ slot: `card-${c.id}`, text: c.sub, weight: 1 })),
-    ].flatMap((s) => {
-      const count = flipCount(s.text);
-      return count ? Array.from({ length: s.weight }, () => ({ slot: s.slot, count })) : [];
-    });
-    if (!slots.length) return;
+    if (!allDone || reduced || section || !flipCount(intro.lines[0].text)) return;
     const timers: number[] = [];
     const at = (fn: () => void, ms: number) => timers.push(window.setTimeout(fn, ms));
+    const slot = "line-0";
+    const k = 0;
     const loop = (first: boolean) => {
       const wait = first ? T.flipFirst : T.flipEveryMin + Math.random() * (T.flipEveryMax - T.flipEveryMin);
       at(() => {
-        const pick = slots[Math.floor(Math.random() * slots.length)];
-        const k = Math.floor(Math.random() * pick.count);
-        // glitch in -> hold "we" -> a small flicker as he notices -> glitch back to "I"
-        setFlip({ slot: pick.slot, k, stage: "in" });
+        // glitch in -> hold "we're" -> a small flicker as he notices -> glitch back
+        setFlip({ slot, k, stage: "in" });
         engine?.glitch(180);
         sound.current?.glitch();
         let t = T.flipIn;
-        at(() => setFlip({ slot: pick.slot, k, stage: "hold" }), t);
+        at(() => setFlip({ slot, k, stage: "hold" }), t);
         t += T.flipHold;
-        at(() => setFlip({ slot: pick.slot, k, stage: "notice" }), t);
+        at(() => setFlip({ slot, k, stage: "notice" }), t);
         t += T.flipNotice;
-        at(() => setFlip({ slot: pick.slot, k, stage: "hold" }), t);
+        at(() => setFlip({ slot, k, stage: "hold" }), t);
         t += 260;
         at(() => {
-          setFlip({ slot: pick.slot, k, stage: "out" });
+          setFlip({ slot, k, stage: "out" });
           engine?.glitch(140);
         }, t);
         t += T.flipOut;
@@ -652,7 +643,26 @@ export default function Hero() {
 
           {/* ---------- top bar, every state ---------- */}
           <header className="chrome" data-ui>
-            <p className="chrome-name">{site.signature}</p>
+            {/* top-left: only the machine's status line, in State 2 (nothing in State 1) */}
+            <AnimatePresence mode="wait">
+              {statusText ? (
+                <motion.p
+                  key={statusText}
+                  className="chrome-status"
+                  aria-hidden
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, transition: { duration: 0.12 } }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {"> "}
+                  {statusText.replace(/_$/, "")}
+                  {statusText.endsWith("_") && <span className="caret caret-block" />}
+                </motion.p>
+              ) : (
+                <span />
+              )}
+            </AnimatePresence>
 
             <div className="chrome-right">
               <button
@@ -748,8 +758,11 @@ export default function Hero() {
                         {sec.status.replace(/_$/, "")}
                         <span className="caret caret-block" />
                       </p>
-                      <h2 className="sec-title">{sec.title}</h2>
-                      <p className="sec-line">{sec.line}</p>
+                      <div className="sec-head">
+                        <h2 className="sec-title">{sec.title}</h2>
+                        <p className="sec-line">{sec.line}</p>
+                      </div>
+                      <div className="sec-foot">
                       <p className="sec-note">{sec.note}</p>
                       <div className="sec-links">
                         {sec.links.map((l) => (
@@ -781,6 +794,7 @@ export default function Hero() {
                           {hints.back}
                         </button>
                       </div>
+                      </div>
                     </motion.div>
                   ) : (
                     <motion.div
@@ -791,27 +805,20 @@ export default function Hero() {
                       exit={{ opacity: 0, transition: { duration: 0.15 } }}
                       transition={{ duration: 0.2 }}
                     >
-                      <p className="system-line" aria-hidden>
-                        {statusText && (
-                          <>
-                            {"> "}
-                            {statusText.replace(/_$/, "")}
-                            {statusText.endsWith("_") && <span className="caret caret-block" />}
-                          </>
-                        )}
-                      </p>
+                      <div className="intro-head">
                       <p className="intro-title" aria-hidden>
-                        <Typed full={intro.lines[0]} shown={textOf(0)} flip={flipOf("line-0")} caret={typedUpTo === 0} />
+                        <Typed full={intro.lines[0].text} shown={textOf(0)} flip={flipOf("line-0")} caret={typedUpTo === 0} />
                       </p>
                       <p className="intro-subtitle" aria-hidden>
-                        <Typed full={intro.lines[1]} shown={textOf(1)} flip={flipOf("line-1")} caret={typedUpTo === 1} />
+                        <Typed full={intro.lines[1].text} shown={textOf(1)} flip={null} caret={typedUpTo === 1} />
                       </p>
+                      </div>
                       <div className="intro-body">
-                        {intro.body.map((text, j) => {
+                        {intro.body.map((l, j) => {
                           const i = intro.lines.length + j;
                           return (
                             <p key={j} aria-hidden>
-                              <Typed full={text} shown={textOf(i)} flip={flipOf(`body-${j}`)} caret={typedUpTo === i} />
+                              <Typed full={l.text} shown={textOf(i)} flip={null} caret={typedUpTo === i} />
                             </p>
                           );
                         })}
@@ -864,11 +871,13 @@ export default function Hero() {
           <AnimatePresence>
             {ctaShown && (
               <motion.nav className="cards" data-ui aria-label="Explore" exit={{ opacity: 0, transition: { duration: 0.18 } }}>
-                {intro.cards.map((c) => (
+                {intro.cards.map((c, i) => (
                   <motion.button
                     key={c.id}
                     type="button"
-                    className="card vox"
+                    className={i === 0 ? "card card-primary vox" : "card vox"}
+                    whileHover={reduced ? undefined : { y: -4 }}
+                    whileFocus={reduced ? undefined : { y: -4 }}
                     aria-current={section === c.id ? "true" : undefined}
                     onClick={(e) => open(c.id, e)}
                     onFocus={glance}
@@ -876,15 +885,17 @@ export default function Hero() {
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img className="card-img" src={c.image} alt="" draggable={false} />
+                    <span className="card-num" aria-hidden>
+                      {c.number} <span className="card-dash" />
+                    </span>
                     <span className="card-label">
                       <Typed full={c.label} shown={c.label.slice(0, cardChars)} flip={null} />
                     </span>
                     <span className="card-sub">
-                      <Typed
-                        full={c.sub}
-                        shown={c.sub.slice(0, Math.max(0, cardChars - c.label.length))}
-                        flip={flipOf(`card-${c.id}`)}
-                      />
+                      <Typed full={c.sub} shown={c.sub.slice(0, Math.max(0, cardChars - c.label.length))} flip={null} />
+                    </span>
+                    <span className="card-arrow" aria-hidden>
+                      <Arrow size={16} />
                     </span>
                   </motion.button>
                 ))}

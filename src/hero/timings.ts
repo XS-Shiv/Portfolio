@@ -22,7 +22,7 @@ export const T = {
   // Typing, when there is no voice timing to follow (muted text-only fallback)
   perChar: 16,
   punctuationPause: 60, // extra after . , ? !
-  betweenLines: 60,
+  betweenLines: 0, // the voice's own pause (VOICE.sentence) separates lines
   cardPerChar: 6, // the three cards type together, this fast
   ctaAfterLine: 1, // the main button, restart and cards land once this line (0-based) is done, so they can pulse with the voice
 
@@ -107,6 +107,21 @@ export const MOTION = {
   talkPitchCompact: 3,
   talkFollowCompact: 0.6,
   nodDeg: 8,
+};
+
+/**
+ * Shiv's voice (scripts/generate-voice.ts reads these too). Pauses are inserted
+ * between clips at playback, so changing them needs no regeneration.
+ */
+export const VOICE = {
+  model: "bulbul:v3", // Sarvam AI Bulbul; "bulbul:v2" with speaker "abhilash" is the fallback
+  speaker: "shubh", // pick from the audition (scripts/generate-voice.ts --audition)
+  language: "en-IN",
+  pace: 0.92, // slightly slow
+  pitch: 0, // v2 only: -0.75..0.75; a touch below 0 deepens without sounding processed
+  beat: 350, // ms after a comma-level beat (" / " in a spoken line)
+  sentence: 600, // ms between sentences, and between lines
+  punchline: 900, // ms before the punchline (" // "), so "In hindsight…" lands
 };
 
 /** The audio cables: old black rubber cords with jack plugs, simulated as ropes. */
