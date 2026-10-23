@@ -17,6 +17,7 @@ export type HeroEvent =
   | { type: "START" }
   | { type: "BOOT_DONE" }
   | { type: "LINE_TYPED" }
+  | { type: "FINISH_ALL" }
   | { type: "RESTART" }
   | { type: "RESTART_DONE" };
 
@@ -37,6 +38,8 @@ export function reducer(state: HeroState, event: HeroEvent): HeroState {
       return state.phase === "booting" ? { ...state, phase: "conversation" } : state;
     case "LINE_TYPED":
       return { ...state, typedUpTo: Math.min(state.typedUpTo + 1, state.transcript.length) };
+    case "FINISH_ALL":
+      return { ...state, typedUpTo: state.transcript.length };
     case "RESTART":
       return state.phase === "conversation" || state.phase === "booting"
         ? { ...state, phase: "restarting" }
