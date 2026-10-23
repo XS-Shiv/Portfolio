@@ -1,9 +1,12 @@
 """Build the transparent image plates the hero uses from public/character/front.png.
 
 Outputs (in public/character/):
-  body.webp/.avif   sweater only (neck removed: the 3D scene draws it), transparent, extended downwards
-  front-blank.*    the whole character (monitor + body) with the screen blanked, transparent,
-                   used as the first paint and as the no-WebGL fallback
+  body.webp/.avif   sweater only (neck and the photo's cords removed: the 3D scene draws them),
+                   transparent, extended downwards
+
+front-blank.* (the first paint and the no-WebGL fallback) is no longer cut from the
+photo: it is a still of the 3D character, baked by scripts/bake_still.py, so the
+first paint matches the live head exactly.
 
 Run: python3 scripts/make_plates.py   (needs pillow, numpy, scipy)
 """
@@ -110,6 +113,53 @@ def body_plate(src, full_alpha):
     return Image.fromarray(rgba, "RGBA").crop((0, CUT_Y, w, H))
 
 
+# The cords lying over the left of the collar in the photo, traced in body-plate pixels.
+CORDS = [
+    [(420, 298), (424, 330), (440, 355), (470, 375), (500, 382), (530, 375), (555, 352), (575, 320), (585, 290), (588, 258)],
+    [(392, 305), (400, 340), (412, 370), (435, 395), (470, 420), (505, 432), (540, 428), (570, 410), (592, 380),
+     (600, 340), (602, 300), (602, 258)],
+    [(386, 306), (392, 345), (398, 380), (410, 412), (430, 440), (458, 460), (490, 470), (520, 463), (545, 446), (556, 430)],
+    [(552, 250), (555, 290), (558, 330), (560, 380), (562, 425)],
+    [(372, 312), (385, 318), (398, 330), (410, 345)],
+]
+
+
+def remove_cables(img):
+    """The 3D scene draws its own cords, plugged in at both ends, so the photo's cords are painted
+    out with the mirrored right half of the sweater (the knit is close to symmetric there)."""
+    a = np.asarray(img).astype(float)
+    alpha = a[..., 3]
+    h, w = alpha.shape
+    m = Image.new("L", (w, h), 0)
+    d = ImageDraw.Draw(m)
+    for cord in CORDS:
+        d.line(cord, fill=255, width=22, joint="curve")
+        for x, y in cord:
+            d.ellipse((x - 11, y - 11, x + 11, y + 11), fill=255)
+    core = np.asarray(m) > 0
+    soft = np.maximum(core.astype(float), ndi.gaussian_filter(ndi.binary_dilation(core, structure=disk(3)).astype(float), 2.0))
+    xs = np.clip(np.round(2 * NECK_C - np.arange(w)).astype(int), 0, w - 1)
+    mir = a[:, xs].copy()
+    # where the mirrored spot is off the sweater (the right shoulder sits lower), borrow knit from below
+    below = np.roll(a, -160, axis=0)
+    off = mir[..., 3] < 200
+    mir[off] = below[off]
+    # match the local brightness of the knit around each cord, so no band shows
+    lum = a[..., :3].mean(2)
+    keep = (~core) & (alpha > 200)
+    g = lambda x: ndi.gaussian_filter(x, 14)
+    around = g(lum * keep) / np.maximum(g(keep.astype(float)), 1e-3)
+    fill = g(mir[..., :3].mean(2))
+    mir[..., :3] *= np.clip(around / np.maximum(fill, 1e-3), 0.6, 1.6)[..., None]
+    rgb = a[..., :3] * (1 - soft[..., None]) + mir[..., :3] * soft[..., None]
+    # the cords' thin see-through edges fill in, and where they stuck out past the shoulder's
+    # outline, the outline closes over them
+    cleaned = ndi.grey_closing(ndi.grey_opening(alpha, footprint=disk(7)), footprint=disk(7))
+    alpha = alpha * (1 - soft) + cleaned * soft
+    out = np.dstack([rgb, alpha])
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), "RGBA")
+
+
 def front_blank(src):
     """Whole character, transparent background, blank screen."""
     h, w, _ = src.shape
@@ -149,14 +199,14 @@ def front_blank(src):
 def main():
     src = np.asarray(Image.open(SRC).convert("RGB")).astype(float)
     fb, full_alpha = front_blank(src)
-    body = body_plate(src, full_alpha)
-    for img, name in ((body, "body"), (fb, "front-blank")):
+    body = remove_cables(body_plate(src, full_alpha))
+    for img, name in ((body, "body"),):
         img.save(OUT / f"{name}.webp", quality=86, method=6)
         try:
             img.save(OUT / f"{name}.avif", quality=70)
         except Exception as e:  # pillow without AVIF support
             print("avif skipped:", e)
-    print("body", body.size, "front-blank", fb.size)
+    print("body", body.size)
 
 
 if __name__ == "__main__":
