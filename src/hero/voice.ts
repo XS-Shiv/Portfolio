@@ -1,31 +1,33 @@
+import type { Spoken } from "./content";
 import type { Sound } from "./sound";
+import { clipKey, type Manifest, segmentsOf } from "./speech";
 
 /**
  * Shiv's voice. Each line in State 2 is spoken while its words appear.
  *
- * - A pre-generated clip (public/voice, made by scripts/make_voice.py) is used
- *   when its text still matches the line exactly. It plays through the sound's
- *   analyser, so the face and the buttons follow its real loudness, and words
- *   appear at the times stored with it.
- * - An edited line without a fresh clip falls back to the browser's own voice
- *   (speechSynthesis), with words following its word-boundary events.
+ * - A line is split into phrases (speech.ts); each phrase has its own clip in
+ *   public/voice (made by scripts/generate-voice.ts), and the pauses between
+ *   them come from VOICE in timings.ts. Clips play through the sound's
+ *   analyser, so the face and the buttons follow the voice's real loudness.
+ * - The words on screen follow the spoken words (the spoken text may carry
+ *   extra commas or pauses; the screen text is mapped onto it word for word).
+ * - A line with a phrase that has no clip yet is read by the browser's own voice.
  * - Muted, the words still appear in the voice's rhythm, silently.
  * Clips load only once State 2 starts, so they never compete with first paint.
  */
 
-type Clip = { text: string; src: string; duration: number; words: number[] };
-type Manifest = { voice: string; lines: Clip[] };
-
 /** Silent or browser-voice pacing when there is no clip: about 15 characters a second. */
 const MS_PER_CHAR = 64;
 
-/** Start index of every word, and the index just past its end. */
+/** Index just past the end of every word. */
 function wordEnds(text: string) {
   const ends: number[] = [];
   const re = /\S+/g;
   for (let m = re.exec(text); m; m = re.exec(text)) ends.push(m.index + m[0].length);
   return ends;
 }
+
+const plain = (spoken: string) => spoken.replace(/\s*\/\/?\s*/g, " ");
 
 export type Speech = {
   /** Show the whole line now and stop its audio; onDone fires. */
@@ -49,7 +51,7 @@ export class Narrator {
       this.manifest = fetch("/voice/manifest.json")
         .then((r) => (r.ok ? (r.json() as Promise<Manifest>) : null))
         .catch(() => null);
-      void this.manifest.then((m) => m?.lines.forEach((c) => this.buffer(c.src)));
+      void this.manifest.then((m) => m && Object.values(m.clips).forEach((c) => this.buffer(c.src)));
     }
     return this.manifest;
   }
@@ -78,16 +80,24 @@ export class Narrator {
   }
 
   /**
-   * Speak one line. onShow(n) is called with how many characters to show as
-   * words arrive; onDone once the line has been said (or finished early).
+   * Speak one line. onShow(n) is called with how many characters of the screen
+   * text to show as words arrive; onDone once the line has been said (or finished early).
    */
-  speak(text: string, onShow: (n: number) => void, onDone: () => void): Speech {
+  speak(line: Spoken, onShow: (n: number) => void, onDone: () => void): Speech {
+    const text = line.text;
+    const spoken = line.spoken ?? line.text;
     const ends = wordEnds(text);
     let done = false;
     let cancelled = false;
     const timers: number[] = [];
     let stopAudio = () => {};
 
+    /** Spoken word i has started: show the matching share of the screen words. */
+    const showSpoken = (i: number, total: number) => {
+      if (cancelled || done) return;
+      const k = Math.min(ends.length, Math.ceil(((i + 1) * ends.length) / Math.max(1, total)));
+      if (k > 0) onShow(ends[k - 1]);
+    };
     const end = () => {
       if (done || cancelled) return;
       done = true;
@@ -97,16 +107,19 @@ export class Narrator {
       onDone();
     };
     const schedule = (times: number[], total: number) => {
-      times.forEach((t, k) => timers.push(window.setTimeout(() => !cancelled && onShow(ends[k]), t * 1000)));
+      times.forEach((t, i) => timers.push(window.setTimeout(() => showSpoken(i, times.length), t * 1000)));
       timers.push(window.setTimeout(end, total * 1000 + 40));
     };
     const estimate = () => {
       let acc = 0;
       const times: number[] = [];
-      const re = /\S+\s*/g;
-      for (let m = re.exec(text); m; m = re.exec(text)) {
-        times.push(acc);
-        acc += (m[0].length * MS_PER_CHAR + (/[,.\n]/.test(m[0]) ? 180 : 0)) / 1000;
+      for (const seg of segmentsOf(spoken)) {
+        const re = /\S+\s*/g;
+        for (let m = re.exec(seg.text); m; m = re.exec(seg.text)) {
+          times.push(acc);
+          acc += (m[0].length * MS_PER_CHAR + (/[,.…]/.test(m[0]) ? 160 : 0)) / 1000;
+        }
+        acc += seg.pause / 1000;
       }
       return { times, total: acc };
     };
@@ -118,43 +131,63 @@ export class Narrator {
 
     void this.load().then(async (m) => {
       if (cancelled || done) return;
-      const clip = m?.lines.find((c) => c.text === text);
-      if (clip) {
-        const buf = audible ? await this.buffer(clip.src) : null;
+      const segs = segmentsOf(spoken);
+      const clips = m ? segs.map((s) => m.clips[clipKey(s.text, m)]) : [];
+      if (m && clips.every(Boolean)) {
+        // the timeline: each clip, then its pause
+        let t = 0;
+        const starts: number[] = [];
+        const times: number[] = [];
+        clips.forEach((c, i) => {
+          starts.push(t);
+          c.words.forEach((w) => times.push(t + w));
+          t += c.duration + (i < clips.length - 1 ? segs[i].pause / 1000 : 0);
+        });
+        const bufs = audible ? await Promise.all(clips.map((c) => this.buffer(c.src))) : [];
         if (cancelled || done) return;
         const ac = this.sound.audio();
         const out = this.sound.voiceOut();
-        if (buf && ac && out && audible) {
-          const src = ac.createBufferSource();
-          src.buffer = buf;
+        if (audible && ac && out && bufs.length && bufs.every(Boolean)) {
           const g = ac.createGain();
-          src.connect(g).connect(out);
-          src.start();
+          g.connect(out);
+          const at = ac.currentTime + 0.04;
+          const srcs = bufs.map((b, i) => {
+            const s = ac.createBufferSource();
+            s.buffer = b;
+            s.connect(g);
+            s.start(at + starts[i]);
+            return s;
+          });
           this.sound.duck(true);
           stopAudio = () => {
-            const t = ac.currentTime;
-            g.gain.setValueAtTime(g.gain.value, t);
-            g.gain.linearRampToValueAtTime(0, t + 0.08);
-            try {
-              src.stop(t + 0.1);
-            } catch {
-              /* already stopped */
-            }
+            const now = ac.currentTime;
+            g.gain.setValueAtTime(g.gain.value, now);
+            g.gain.linearRampToValueAtTime(0, now + 0.08);
+            srcs.forEach((s) => {
+              try {
+                s.stop(now + 0.1);
+              } catch {
+                /* already stopped */
+              }
+            });
           };
         }
-        schedule(clip.words, clip.duration);
+        schedule(times, t);
         return;
       }
-      // no clip for this exact text: the browser's voice, or silent pacing when muted
+      // a phrase without a clip: the browser's voice, or silent pacing when muted
       const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
       if (audible && synth) {
-        const u = new SpeechSynthesisUtterance(text.replace(/\n/g, ". "));
-        u.rate = 1.02;
-        let spoken = 0;
+        const say = plain(spoken);
+        const sayEnds = wordEnds(say);
+        const u = new SpeechSynthesisUtterance(say);
+        u.rate = 0.95;
+        u.lang = "en-IN";
         u.onboundary = (e) => {
           if (e.name !== "word" || cancelled) return;
-          while (spoken < ends.length && ends[spoken] <= e.charIndex) spoken++;
-          onShow(ends[Math.min(spoken, ends.length - 1)]);
+          let i = 0;
+          while (i < sayEnds.length - 1 && sayEnds[i] <= e.charIndex) i++;
+          showSpoken(i, sayEnds.length);
           this.fakeLevel = 0.75;
           this.fakeUntil = performance.now() + 160;
         };
@@ -187,25 +220,20 @@ export class Narrator {
   }
 
   /** Say several lines one after another without driving any text (reduced motion). */
-  queue(lines: string[]): Speech {
+  queue(lines: Spoken[], gap: number): Speech {
     let i = 0;
     let cur: Speech | null = null;
     let stopped = false;
     const next = () => {
       if (stopped || i >= lines.length) return;
-      cur = this.speak(lines[i++], () => {}, () => window.setTimeout(next, 120));
+      cur = this.speak(lines[i++], () => {}, () => window.setTimeout(next, gap));
     };
     next();
-    return {
-      finish: () => {
-        stopped = true;
-        cur?.cancel();
-      },
-      cancel: () => {
-        stopped = true;
-        cur?.cancel();
-      },
+    const stop = () => {
+      stopped = true;
+      cur?.cancel();
     };
+    return { finish: stop, cancel: stop };
   }
 
   /** Stop whatever is being said. */

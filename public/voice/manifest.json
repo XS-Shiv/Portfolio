@@ -1,70 +1,91 @@
 {
-  "voice": "am_michael",
-  "tool": "Kokoro v1.0 (kokoro-onnx)",
-  "lines": [
-    {
-      "text": "Hey, I'm Shiv",
-      "src": "/voice/line-0.mp3",
-      "duration": 0.944,
+  "engine": "kokoro",
+  "model": "bulbul:v3",
+  "speaker": "shubh",
+  "pace": 0.92,
+  "pitch": 0,
+  "placeholder": true,
+  "clips": {
+    "3043558c": {
+      "text": "Hey,",
+      "src": "/voice/3043558c.mp3",
+      "duration": 0.562,
       "words": [
-        0.0,
-        0.325,
-        0.619
+        0
       ]
     },
-    {
-      "text": "I make decisions for a living",
-      "src": "/voice/line-1.mp3",
-      "duration": 1.621,
+    "2d805cef": {
+      "text": "I'm Shiv.",
+      "src": "/voice/2d805cef.mp3",
+      "duration": 0.837,
       "words": [
-        0.0,
-        0.137,
-        0.447,
-        0.966,
-        1.138,
-        1.276
+        0,
+        0.379
       ]
     },
-    {
-      "text": "At least, I used to make all of them myself\nThe machine has started developing opinions",
-      "src": "/voice/line-2.mp3",
-      "duration": 5.369,
+    "a50b120f": {
+      "text": "I make decisions for a living.",
+      "src": "/voice/a50b120f.mp3",
+      "duration": 1.794,
       "words": [
-        0.0,
-        0.181,
-        0.445,
-        0.605,
-        0.966,
-        1.147,
-        1.509,
-        1.71,
-        1.891,
-        2.113,
-        2.837,
-        3.023,
-        3.544,
-        3.73,
-        4.122,
-        4.829
+        0,
+        0.15,
+        0.489,
+        1.057,
+        1.246,
+        1.396
       ]
     },
-    {
-      "text": "I let it handle the introduction\nIn hindsight, that was generous",
-      "src": "/voice/line-3.mp3",
-      "duration": 3.972,
+    "15948e2b": {
+      "text": "Lately, the machine has started having its opinions about them.",
+      "src": "/voice/15948e2b.mp3",
+      "duration": 3.652,
       "words": [
-        0.0,
-        0.143,
-        0.323,
-        0.484,
-        0.844,
-        1.024,
-        2.063,
-        2.269,
-        2.824,
-        3.077,
-        3.307
+        0,
+        0.546,
+        0.741,
+        1.287,
+        1.482,
+        1.893,
+        2.284,
+        2.48,
+        3.046,
+        3.416
+      ]
+    },
+    "64e1cb02": {
+      "text": "And, occasionally,",
+      "src": "/voice/64e1cb02.mp3",
+      "duration": 1.22,
+      "words": [
+        0,
+        0.228
+      ]
+    },
+    "413dcda7": {
+      "text": "I let it handle some.",
+      "src": "/voice/413dcda7.mp3",
+      "duration": 1.22,
+      "words": [
+        0,
+        0.147,
+        0.332,
+        0.498,
+        0.869
+      ]
+    },
+    "872876e5": {
+      "text": "In hindsight, I think it's generous.",
+      "src": "/voice/872876e5.mp3",
+      "duration": 2.153,
+      "words": [
+        0,
+        0.205,
+        0.757,
+        0.938,
+        1.215,
+        1.467
       ]
     }
-  ]
+  }
 }
