@@ -20,22 +20,24 @@ Everything the site says lives in [`src/hero/content.ts`](src/hero/content.ts): 
 
 ## His voice
 
-Every line in `intro.lines` and `intro.body` is spoken while its words appear. The clips are in `public/voice/` (one small MP3 per line, about 72 KB in all, Kokoro's `am_michael` voice with a light "machine" treatment) with their word timings in `manifest.json`. After you edit a spoken line, regenerate them:
+Every line in `intro.lines` and `intro.body` is spoken while its words appear. Each line can carry a `spoken` version that shapes delivery without changing the screen (` / ` is a short beat, ` // ` a long pause before a punchline). Lines are split into one clip per phrase; the pauses between clips (`VOICE.beat`, `VOICE.sentence`, `VOICE.punchline` in `timings.ts`) are added at playback, so changing them needs no regeneration.
 
-```bash
-pip install kokoro-onnx soundfile numpy scipy   # plus ffmpeg
-# model files: github.com/thewh1teagle/kokoro-onnx/releases (model-files-v1.0)
-python3 scripts/make_voice.py --model kokoro-v1.0.int8.onnx --voices voices-v1.0.bin
-```
+The clips are made with Sarvam AI's Bulbul TTS (Indian English):
 
-Until you do, an edited line is read by the visitor's browser voice, so nothing breaks. Sound is on by default (browsers start it on the first click); the speaker in the top bar mutes everything and is remembered.
+1. Get an API key at [dashboard.sarvam.ai](https://dashboard.sarvam.ai) (new accounts get free credits; the whole intro is under 300 characters).
+2. Put it in `.env.local` (never committed): `SARVAM_API_KEY=...`
+3. Audition voices: `npx tsx scripts/generate-voice.ts --audition shubh,aditya,rahul,kabir` writes `voice-audition/<name>.mp3` (the full intro with real pauses).
+4. Set `VOICE.speaker` in `timings.ts` to your pick, then `npx tsx scripts/generate-voice.ts`.
+
+Only phrases whose text or voice settings changed are regenerated; unused clips are deleted. Needs ffmpeg. Until a phrase has a clip, its line is read by the visitor's browser voice. Sound is on by default (browsers start it on the first click); the speaker in the top bar mutes everything and is remembered.
 
 ## How State 2 works
 
 - One screen, never scrolls, at any size. The type scale follows the smaller of width and height.
 - The lines are revealed word by word with the voice. The main button, restart and the three cards arrive after the second line and pulse with his voice. Clicking the text finishes the current line.
 - "View my work" and the cards open their section in place of the introduction, with a Back button. Restart returns to State 1.
-- Every 9 to 14 seconds one pronoun flips I -> we (my -> our, ...): it glitches in, holds for 1.8 s, flickers as he notices, and glitches back. Words in [`src/hero/pronouns.ts`](src/hero/pronouns.ts), timing in `timings.ts`.
+- Every 9 to 14 seconds the headline's "I'm" glitches to "we're", holds for 1.8 s, flickers as he notices, and glitches back (text only; the voice says "I'm"). Timing in `timings.ts`.
+- On phones the cards are a compact stack; add `?cards=row` to preview them as a horizontal snap row.
 
 ## Type
 
@@ -76,7 +78,8 @@ Add `?nowebgl` to the URL to see the photo fallback that browsers without WebGL 
 | `src/hero/character/physics.ts`, `springs.ts` | The rope and re-bendable tube for the cords; the spring helpers |
 | `src/hero/voice.ts` | Speaks each line and reveals its words in time |
 | `src/hero/sound.ts` | Music, the voice's analyser, mute, and the small effects |
-| `scripts/make_voice.py` | Regenerates the voice clips from `content.ts` |
+| `scripts/generate-voice.ts` | Makes the voice clips with Sarvam AI (or `--engine kokoro` offline placeholders) |
+| `src/hero/speech.ts` | How a spoken line splits into phrase clips and pauses (shared by the script and the page) |
 | `scripts/make_plates.py` | Rebuilds `public/character/body.*` from `front.png` (cords painted out) |
 | `scripts/bake_still.py` | Bakes `front-blank.*`, the first-paint still of the 3D character |
 

@@ -1,9 +1,9 @@
-import { intro } from "./content";
+import { intro, type Spoken } from "./content";
 
 /** The hero's explicit states. */
 export type Phase = "idle" | "booting" | "conversation" | "restarting";
 
-export type Line = { id: number; text: string };
+export type Line = Spoken & { id: number };
 
 export type HeroState = {
   phase: Phase;
@@ -31,7 +31,7 @@ export function reducer(state: HeroState, event: HeroEvent): HeroState {
       if (state.phase !== "idle") return state;
       return {
         phase: "booting",
-        transcript: [...intro.lines, ...intro.body].map((text) => ({ id: ++lineId, text })),
+        transcript: [...intro.lines, ...intro.body].map((l) => ({ ...l, id: ++lineId })),
         typedUpTo: 0,
       };
     case "BOOT_DONE":

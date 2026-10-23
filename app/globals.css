@@ -42,6 +42,12 @@ html[data-font="inter"] {
 
 :root {
   --inset: 40px;
+  /* State 2: the bottom of "View my work" sits this far above the bottom of the screen (80vh) */
+  --cta-bottom: 20dvh;
+  /* State 2: the gap between groups in the left column (status, headline, body, button) */
+  --group-gap: clamp(26px, 8.5dvh, 96px);
+  /* the cards: one padding on every side */
+  --card-pad: clamp(16px, 2.1dvh, 20px);
   --ease-settle: cubic-bezier(0.76, 0, 0.24, 1);
   --ease-arrive: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -242,12 +248,17 @@ body {
   pointer-events: auto;
 }
 
-.chrome-name {
+.chrome-status {
+  display: flex;
+  align-items: center;
   margin: 0;
-  font-size: 30px;
-  font-weight: var(--title-weight, 560);
+  font-family: var(--font-mono);
+  font-size: 12px;
   line-height: 1;
-  letter-spacing: -0.035em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: #1d1d1d;
   pointer-events: none !important;
 }
 
@@ -397,8 +408,9 @@ body {
   .chrome {
     padding: var(--inset);
   }
-  .chrome-name {
-    font-size: 24px;
+  .chrome-status {
+    font-size: 10px;
+    letter-spacing: 0.03em;
   }
   .chrome-right {
     gap: 10px;
@@ -495,12 +507,31 @@ body {
 
 /* The type scale follows the smaller of width and height, so the whole
    conversation fits any screen without scrolling. */
+/* The left column is anchored at the bottom: the button's bottom edge sits at
+   80vh (--cta-bottom), and the groups stack upward from it with one rhythm:
+   --group-gap between groups, tight spacing inside a group. */
 .column {
   position: absolute;
   left: calc(var(--inset) + 2vw);
   width: min(34vw, 540px);
-  top: clamp(92px, 21dvh, 250px);
+  top: 112px;
+  bottom: var(--cta-bottom);
   z-index: 4;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.column > * {
+  pointer-events: auto;
+}
+
+.intro,
+.section-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--group-gap);
 }
 
 /* revealed lines: the invisible full copy holds the space, the live copy sits on top */
@@ -521,7 +552,7 @@ body {
   display: flex;
   align-items: center;
   min-height: 1.2em;
-  margin: 0 0 clamp(10px, 2.2dvh, 22px);
+  margin: 0;
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.2;
@@ -552,7 +583,7 @@ body {
 }
 
 .intro-body {
-  margin-top: clamp(12px, 3dvh, 28px);
+  max-width: 30em;
 }
 
 .intro-body p {
@@ -566,15 +597,14 @@ body {
 }
 
 .intro-body p + p {
-  margin-top: clamp(6px, 1.4dvh, 12px);
+  margin-top: clamp(8px, 1.6dvh, 14px);
 }
 
 .cta-row {
   --h: clamp(46px, 7.5dvh, 60px);
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: clamp(16px, 4.5dvh, 38px);
+  gap: clamp(14px, 1.6vw, 22px);
   min-height: var(--h);
 }
 
@@ -729,7 +759,7 @@ body {
 }
 
 .sec-line {
-  margin: clamp(10px, 2.2dvh, 20px) 0 0;
+  margin: clamp(10px, 2dvh, 18px) 0 0;
   font-size: clamp(17px, min(1.7vw, 3.2dvh), 28px);
   line-height: 1.25;
   letter-spacing: -0.015em;
@@ -738,7 +768,7 @@ body {
 }
 
 .sec-note {
-  margin: clamp(10px, 2.4dvh, 22px) 0 0;
+  margin: 0;
   max-width: 30em;
   font-size: clamp(13px, 1.9dvh, 15px);
   line-height: 1.45;
@@ -749,7 +779,6 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: clamp(16px, 4dvh, 34px);
 }
 
 .sec-link,
@@ -793,114 +822,171 @@ body {
   border-radius: 999px;
 }
 
-/* ---------- the three cards: clear glass over the sweater, with a photo ---------- */
+/* ---------- the three cards: dark glass, a number, a title, one line, an arrow,
+   and a monitor photo bleeding off the right edge behind the text ---------- */
 
 .cards {
   position: absolute;
-  right: calc(var(--inset) + 1vw);
-  bottom: calc(var(--inset) + 6px);
+  right: calc(var(--inset) + 2vw);
+  bottom: var(--inset);
   display: flex;
-  gap: 12px;
+  align-items: stretch;
+  gap: clamp(12px, 1vw, 16px);
   z-index: 4;
 }
 
-/* three cards plus gaps stay inside the right half of the screen */
 .card {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 10px;
-  width: clamp(196px, 14.6vw, 252px);
-  min-height: clamp(124px, 17dvh, 150px);
-  padding: 15px 16px 16px;
-  border: 1px solid rgba(255, 255, 255, calc(0.34 + var(--vox) * 0.5));
+  width: clamp(230px, 17.4vw, 300px);
+  height: clamp(150px, 22dvh, 196px);
+  padding: var(--card-pad);
+  border: 1px solid rgba(255, 255, 255, calc(0.16 + var(--vox) * 0.4));
   border-radius: 16px;
   background:
-    linear-gradient(150deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02) 60%),
-    rgba(14, 16, 20, 0.18);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
-  backdrop-filter: blur(14px) saturate(1.4);
+    linear-gradient(160deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0) 55%),
+    rgba(12, 13, 16, 0.72);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.35),
-    0 0 calc(var(--vox) * 24px) rgba(90, 140, 255, calc(var(--vox) * 0.55)),
-    0 20px 40px -22px rgba(0, 0, 0, 0.5);
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 0 calc(var(--vox) * 22px) rgba(90, 140, 255, calc(var(--vox) * 0.5)),
+    0 22px 44px -24px rgba(0, 0, 0, 0.6);
   color: #fff;
   font: inherit;
   text-align: left;
   overflow: hidden;
   cursor: pointer;
   transition:
-    transform 0.3s var(--ease-arrive),
-    border-color 90ms linear,
+    border-color 0.2s,
     box-shadow 90ms linear,
     scale 90ms linear;
 }
 
+/* 01 is the primary way in: a blue edge and glow, same size as the others */
+.card-primary {
+  border-color: rgba(110, 150, 255, calc(0.55 + var(--vox) * 0.4));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 calc(18px + var(--vox) * 22px) rgba(47, 107, 255, calc(0.28 + var(--vox) * 0.4)),
+    0 22px 44px -24px rgba(0, 0, 0, 0.6);
+}
+
 .card:hover,
 .card[aria-current="true"] {
-  transform: translateY(-2px);
-  border-color: rgba(255, 255, 255, 0.7);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.card-primary:hover,
+.card-primary[aria-current="true"] {
+  border-color: rgba(140, 175, 255, 0.95);
 }
 
 .card:focus-visible {
   border-radius: 16px;
 }
 
+/* the photo sits in the right half and fades out before the text column */
 .card-img {
   position: absolute;
   top: 0;
   right: 0;
-  width: 58%;
+  width: 46%;
   height: 100%;
   object-fit: cover;
-  object-position: 35% 30%;
-  filter: grayscale(1) brightness(0.62) contrast(1.2);
-  opacity: 0.85;
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 60%);
-  mask-image: linear-gradient(to right, transparent 0%, #000 60%);
+  object-position: 40% 30%;
+  filter: grayscale(1) brightness(0.55) contrast(1.15);
+  opacity: 0.9;
+  /* fully transparent until past the text column (which ends at ~65% of the card) */
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, transparent 40%, #000 82%);
+  mask-image: linear-gradient(to right, transparent 0%, transparent 40%, #000 82%);
   pointer-events: none;
   transition: transform 0.6s var(--ease-arrive);
 }
 
 .card:hover .card-img {
-  transform: scale(1.05);
+  transform: scale(1.04);
 }
 
+.card-num,
 .card-label,
 .card-sub {
   position: relative;
-  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45);
+  max-width: 68%;
+}
+
+.card-num {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.card-dash {
+  display: inline-block;
+  width: 14px;
+  height: 1px;
+  background: currentColor;
 }
 
 .card-label {
-  max-width: 12em;
-  font-size: clamp(14px, 1.02vw, 16.5px);
+  margin-top: clamp(12px, 2.2dvh, 22px);
+  font-size: clamp(15px, 1.1vw, 17px);
   font-weight: 600;
   line-height: 1.18;
   letter-spacing: -0.015em;
 }
 
 .card-sub {
-  max-width: 15em;
+  margin-top: clamp(6px, 0.9dvh, 9px);
   font-size: clamp(11.5px, 0.82vw, 13px);
   line-height: 1.4;
-  color: rgba(255, 255, 255, 0.9);
-  white-space: pre-line;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.card-arrow {
+  position: absolute;
+  right: var(--card-pad);
+  bottom: var(--card-pad);
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  transition: transform 0.25s var(--ease-arrive), background-color 0.2s;
+}
+
+.card:hover .card-arrow,
+.card:focus-visible .card-arrow {
+  transform: translateX(3px);
+  background: rgba(255, 255, 255, 0.18);
 }
 
 /* ---------- phones: the head top-right, the conversation below, one screen ---------- */
 
 @media (max-width: 759px), (max-aspect-ratio: 3/4) {
+  :root {
+    --group-gap: clamp(12px, 2.6dvh, 24px);
+    --card-pad: 14px;
+  }
+  /* phones: same order, stacked under the character, from the top down */
   .column {
     left: var(--inset);
     right: var(--inset);
     width: auto;
     top: var(--column-top, 34dvh);
+    bottom: auto;
+    justify-content: flex-start;
   }
   .system-line {
     font-size: 10.5px;
-    margin-bottom: clamp(6px, 1.4dvh, 12px);
   }
   .intro-title {
     font-size: clamp(26px, 5dvh, 38px);
@@ -908,9 +994,6 @@ body {
   .intro-subtitle {
     margin-top: 2px;
     font-size: clamp(17px, 3.1dvh, 25px);
-  }
-  .intro-body {
-    margin-top: clamp(8px, 1.8dvh, 16px);
   }
   .intro-body p {
     font-size: clamp(14px, 2.25dvh, 19px);
@@ -921,8 +1004,7 @@ body {
   }
   .cta-row {
     --h: clamp(42px, 6.2dvh, 52px);
-    margin-top: clamp(10px, 2.2dvh, 20px);
-    gap: 10px;
+    gap: 12px;
   }
   .cta-main {
     padding: 0 22px 0 26px;
@@ -947,60 +1029,109 @@ body {
   .hero[data-section="open"] .cards {
     display: none;
   }
-  /* the cards become three slim rows at the bottom */
+
+  /* cards, option 1 (default): a compact stack of three rows: number, title, arrow */
   .cards {
     left: var(--inset);
     right: var(--inset);
     bottom: var(--inset);
     flex-direction: column;
-    gap: clamp(5px, 1dvh, 8px);
+    gap: clamp(6px, 1dvh, 8px);
   }
   .card {
     flex-direction: row;
     align-items: center;
+    gap: 12px;
     width: 100%;
-    min-height: 0;
-    height: clamp(36px, 5.6dvh, 46px);
-    padding: 0 14px;
-    gap: 8px;
+    height: clamp(40px, 6dvh, 50px);
+    padding: 0 var(--card-pad);
     border-radius: 12px;
   }
   .card-img {
-    width: 34%;
+    width: 40%;
+  }
+  .card-num {
+    max-width: none;
+    font-size: 10.5px;
+  }
+  .card-dash {
+    display: none;
   }
   .card-label {
+    margin-top: 0;
     max-width: none;
-    font-size: clamp(13px, 1.95dvh, 15px);
+    font-size: clamp(13px, 2dvh, 15px);
     white-space: nowrap;
-  }
-  .card-label .typed {
-    display: inline-grid;
   }
   .card-sub {
     display: none;
   }
+  .card-arrow {
+    top: 50%;
+    bottom: auto;
+    width: 24px;
+    height: 24px;
+    margin-top: -12px;
+  }
+
+  /* cards, option 2 (?cards=row): a horizontal snap row of small cards */
+  html[data-cards="row"] .cards {
+    flex-direction: row;
+    gap: 10px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-padding: 0 var(--inset);
+    margin: 0 calc(var(--inset) * -1);
+    padding: 0 var(--inset);
+    scrollbar-width: none;
+    touch-action: pan-x;
+  }
+  html[data-cards="row"] .card {
+    flex: none;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 64vw;
+    height: clamp(104px, 15dvh, 128px);
+    padding: var(--card-pad);
+    scroll-snap-align: start;
+  }
+  html[data-cards="row"] .card-dash {
+    display: inline-block;
+  }
+  html[data-cards="row"] .card-label {
+    margin-top: auto;
+    max-width: 70%;
+    white-space: normal;
+  }
+  html[data-cards="row"] .card-arrow {
+    top: auto;
+    bottom: var(--card-pad);
+    margin-top: 0;
+  }
 }
 
+/* restart is secondary: outlined and smaller than the main button */
 .restart {
   flex: none;
-  width: var(--h, 60px);
-  height: var(--h, 60px);
+  width: calc(var(--h, 60px) * 0.78);
+  height: calc(var(--h, 60px) * 0.78);
   aspect-ratio: 1;
   border-radius: 50%;
-  border: 0;
+  border: 1px solid rgba(0, 0, 0, 0.28);
   padding: 0;
-  background: #000;
-  color: var(--color-paper);
+  background: transparent;
+  color: #111;
   display: grid;
   place-items: center;
   cursor: pointer;
   transition:
-    transform 0.25s var(--ease-arrive),
+    border-color 0.2s,
     background-color 0.2s;
 }
 
 .restart:hover {
-  background: #1c1c1c;
+  background: rgba(255, 255, 255, 0.4);
+  border-color: rgba(0, 0, 0, 0.5);
 }
 
 .restart:hover svg {
@@ -1013,6 +1144,17 @@ body {
 
 .restart:focus-visible {
   border-radius: 50%;
+}
+
+.sec-head {
+  display: flex;
+  flex-direction: column;
+}
+
+.sec-foot {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(14px, 2.6dvh, 24px);
 }
 
 /* ---------- reduced motion ---------- */

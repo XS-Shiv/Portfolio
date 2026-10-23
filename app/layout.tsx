@@ -26,10 +26,13 @@ export const viewport: Viewport = {
   themeColor: "#D6D6D6",
 };
 
-/** ?font=geist (or plex, inter) previews another type pairing; set before first paint. */
-const fontPreview = `try{var f=new URLSearchParams(location.search).get("font");if(${JSON.stringify(
+/**
+ * Previews, set before first paint: ?font=geist (or plex, inter) for another type
+ * pairing, ?cards=row for the phone cards as a horizontal snap row.
+ */
+const fontPreview = `try{var q=new URLSearchParams(location.search),f=q.get("font");if(${JSON.stringify(
   PAIRINGS,
-)}.indexOf(f)>-1)document.documentElement.dataset.font=f}catch(e){}`;
+)}.indexOf(f)>-1)document.documentElement.dataset.font=f;if(q.get("cards")==="row")document.documentElement.dataset.cards="row"}catch(e){}`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

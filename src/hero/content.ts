@@ -1,27 +1,34 @@
 /**
  * All words on the site live here. Edit freely; no component needs to change.
  *
- * State 2 is one screen that never scrolls: a status line, the title, subtitle
- * and two asides (spoken aloud and revealed word by word, one after another),
- * the main button with restart beside it, and three glass cards. The button and
+ * State 2 is one screen that never scrolls: the status line top-left, the
+ * headline and subhead, two short paragraphs (spoken aloud and revealed in
+ * step with the voice), the main button, and three glass cards. The button and
  * the cards open their section in place of the introduction.
  *
- * Every line in intro.lines and intro.body is spoken. After editing one, run
- * scripts/make_voice.py to regenerate the clips; until then that line is read
- * by the browser's own voice.
+ * Every Spoken line is read aloud. `text` is what shows on screen; `spoken`
+ * (optional) is what the voice reads, so you can shape delivery without
+ * changing the screen. In `spoken`:
+ *   " / "   a short beat (VOICE.beat in timings.ts)
+ *   " // "  a long pause before a punchline (VOICE.punchline)
+ *   a sentence end (". ") is a sentence pause (VOICE.sentence)
+ * Commas and ellipses are read by the voice itself.
+ * After editing a spoken line, run scripts/generate-voice.ts; only changed
+ * lines regenerate. Until then the browser's own voice reads it.
  *
- * No full stops anywhere: where a line has two sentences, "\n" breaks it into
- * two lines instead.
- *
- * Every few seconds one pronoun in the visible text flips I -> we (or my -> our)
- * with a glitch and flips back; see pronouns.ts.
+ * Now and then "I'm" in the headline glitches to "we're" and back; see
+ * pronouns.ts and T.flip* in timings.ts.
  */
 
 export type Link = { label: string; href: string };
 
+/** A line Shiv says: what shows on screen, and (optionally) what the voice reads. */
+export type Spoken = { text: string; spoken?: string };
+
 export type Card = {
-  /** Also the id of the section it scrolls to. */
+  /** Also the id of the section it opens. */
   id: string;
+  number: string;
   label: string;
   sub: string;
   /** Photo behind the card text, shown dark and grey. */
@@ -46,8 +53,6 @@ export const site = {
   description:
     "Shivanand Shukla is an AI-first product manager who builds what he plans. Click the monitor to say hi.",
   connectLabel: "Let's talk",
-  /** Top-left signature, every state. */
-  signature: "Shiv.",
 };
 
 export const contact: Link[] = [
@@ -82,31 +87,40 @@ export const status = {
 };
 
 export const intro = {
-  /** Typed in order: the title, then the subtitle. */
-  lines: ["Hey, I'm Shiv", "I make decisions for a living"],
-  /** The two serif lines, equal weight, typed after the subtitle. */
+  /** Revealed in order: the headline, then the subhead. */
+  lines: [
+    { text: "Hey, I'm Shiv.", spoken: "Hey, / I'm Shiv." },
+    { text: "I make decisions for a living." },
+  ] as Spoken[],
+  /** Two short paragraphs, revealed after the subhead. */
   body: [
-    "At least, I used to make all of them myself\nThe machine has started developing opinions",
-    "I let it handle the introduction\nIn hindsight, that was generous",
-  ],
+    { text: "Lately, the machine has started having its opinions about them." },
+    {
+      text: "And, occasionally, I let it handle some. In hindsight, I think it's generous.",
+      spoken: "And, occasionally, / I let it handle some. // In hindsight, I think it's generous.",
+    },
+  ] as Spoken[],
   primary: "View my work",
   cards: [
     {
       id: "situation",
+      number: "01",
       label: "The human–machine situation",
-      sub: "I build with AI\nIt has started building a case for itself",
+      sub: "I build with AI. Now it has started building a case for itself.",
       image: "/screen/three-quarter.webp",
     },
     {
       id: "behind",
+      number: "02",
       label: "The human behind the screen",
-      sub: "Before the machine takes full credit, there's a human story worth knowing",
+      sub: "Before the machine takes full credit, there's a human story worth knowing.",
       image: "/screen/side.webp",
     },
     {
       id: "notes",
-      label: "Notes from the machine",
-      sub: "Thoughts on products, technology, and the occasional disagreement between human and machine",
+      number: "03",
+      label: "Notes from the human machine",
+      sub: "Thoughts on products, technology, and the occasional disagreement between human and machine.",
       image: "/screen/back.webp",
     },
   ] as Card[],
@@ -119,7 +133,7 @@ export const sections: Section[] = [
     number: "01",
     status: "ACCESSING BUILD LOGS_",
     title: "The human–machine situation",
-    line: "I build with AI\nIt has started building a case for itself",
+    line: "I build with AI. Now it has started building a case for itself.",
     note: "The build logs are being written up, the machine insists on one more polish",
     links: [
       { label: "See the code on GitHub", href: "https://github.com/XS-Shiv" },
@@ -131,7 +145,7 @@ export const sections: Section[] = [
     number: "02",
     status: "SCANNING FOR HUMAN_",
     title: "The human behind the screen",
-    line: "Before the machine takes full credit, there's a human story worth knowing",
+    line: "Before the machine takes full credit, there's a human story worth knowing.",
     note: "The long version is being written, by the human this time",
     links: [{ label: "Find me on LinkedIn", href: "https://www.linkedin.com/in/shivanand-shukla" }],
   },
@@ -139,8 +153,8 @@ export const sections: Section[] = [
     id: "notes",
     number: "03",
     status: "READING THOUGHTS.TXT_",
-    title: "Notes from the machine",
-    line: "Thoughts on products, technology, and the occasional disagreement between human and machine",
+    title: "Notes from the human machine",
+    line: "Thoughts on products, technology, and the occasional disagreement between human and machine.",
     note: "Essays on AI, design and attention economics",
     links: [{ label: "Read on Medium", href: "https://medium.com/@shivanandisshukla" }],
   },
