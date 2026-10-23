@@ -50,10 +50,36 @@ Scaling the torso group scales everything inside it, including depth. Three thin
 
 A short, evenly lit, bright neck reads as a flat block. The photo's neck is a warm, fairly dark tone (about rgb 110, 72, 54) that falls into the monitor's shadow toward the top. The 3D neck's base colour and painted-in vertex shading match that, with darker sides so it reads as round. If the neck's length changes, re-check the shading range (`smooth(...)` on `t`), since it is measured along the neck.
 
-## Scrolling a page whose hero is a fixed stage
-
-The hero used to be `position: fixed` with the whole document locked. Now the hero is an ordinary 100dvh block and `<html data-scroll>` decides whether the page may scroll ("on" only in State 2). The character keeps working because its box is laid out relative to the hero, which sits at the top of the document; the cursor's y has `scrollY` added before aiming the head; and the 3D pauses once the hero has scrolled out of view. The top bar is `position: fixed` and gets a frosted backing as soon as the page moves.
-
 ## Keep the 3D canvas no bigger than it needs to be
 
 The canvas covers the character box plus margins (`CANVAS` in geometry.ts). Widening the sides to 0.34 for the scaled-up torso made it about 7 million pixels with shadows on a 1920 screen, enough to make the whole page, scrolling included, feel stuck on a modest GPU. With the torso back at its photographed size, 0.18 is enough. Headless tests here render WebGL in software, so they cannot judge scroll smoothness: every wheel listener on the page is passive, which is what matters on real hardware.
+
+## Springs, and why these numbers
+
+The head is a second-order spring per axis, integrated in 1/240 s sub-steps of the real frame time (`springs.ts`), so it feels the same at any frame rate. ω = 18 rad/s with ζ = 0.75 reaches 90% of a step in about 155 ms with a 3% overshoot: fast enough to read as "looking at you", and the overshoot is what makes a fast flick snap. The old version was a single exponential with λ = 2.2 (about 450 ms to 63%), which is why it felt like a sticker drifting. A critically damped follower lags a moving target by about 2/ω, which sets the layers: the neck (ω = 50, ~40 ms) chases the head, the torso (ω = 13, ~150 ms) chases a quarter of it. That overlap, not the range, is most of what makes it feel alive. Pointer data stays in a mutable object; React never re-renders on pointermove.
+
+The cursor is turned into angles by projecting it onto a plane in front of the head (`atan2(dx, 0.55·viewport height)`), multiplied by a gain of 1.25 and passed through `max·tanh(x/max)`. Near the head that is almost linear with a slope above 1, so small moves show; at the edges it eases into the limit instead of stopping.
+
+## The 2.5D torso
+
+A flat plate turning in 3D just slides. The sweater stays facing the camera and its vertex shader moves each vertex as if the photo were wrapped round an ellipse (half-width 5.2, half-depth 2.3 units) turned by the torso's yaw, minus the centre's own shift, which the torso group provides by turning round an axis 2.3 units behind the sweater. Two details matter. The collar band moves by the neck's depth, not the chest's, or the neck slides out of its hole in the collar. And `plateWarp()` in Crt3D repeats the shader's maths so the collar plugs ride on the same surface. A 3D torso would need a knit GLB; the 2.5D plate keeps the photo's real knit.
+
+## Cords as ropes
+
+Each cord is a verlet chain of 22 points with a fixed length (slack × the plugs' distance at rest), 20 length passes per 1/120 s step, gravity 140 units/s². The two points at each end are pinned along the plug's axis, so a cord always leaves its boot straight. Three things went wrong before it looked right: the tube's triangles were wound inward, so cords looked hollow and grey and the neck striped (`Tube` winds counter-clockwise from outside); a sharp-cornered collision box made cords kink round invisible corners (it is now a rounded box, by distance field); and a hard "stay in front of the sweater below the collar" rule made cords jump forward at the rim (the minimum depth now eases in over 0.6 units). Plug every cord on the side it comes from, or it wraps round the neck.
+
+## The neck seam
+
+The seam had two causes. The tube met the flat underside of the monitor with nothing between them, so at any angle there was a hard edge, and the photo's neck hole in the collar showed the backdrop whenever the neck bent away from it. The neck now goes up into a rubber grommet that belongs to the head (so it turns with it), and a half-cylinder of dark knit sits behind the neck as the inside of the turtleneck. The neck also carries 35% of the head's bend, so the head rides on an arc rather than pivoting on one point.
+
+## Voice and loudness
+
+Web Speech audio cannot be routed through WebAudio, so its loudness cannot be measured. The clips are pre-generated (Kokoro offline TTS), played as buffers through an AnalyserNode in front of the master gain, and the RMS of each frame drives a CSS variable `--vox` on the hero (one style write per change, no React) and the face. The buttons use the separate `scale` property, which composes with the transform Motion writes. Kokoro gives no word timings, so each sentence is synthesised on its own (exact sentence boundaries) and words within it are timed by syllable weight. A clip is only used when its stored text matches the line exactly; otherwise the browser voice reads it.
+
+## Keeping three.js out of the first paint
+
+`Hero` imported one tiny helper from a file that also imported three.js, which pulled 100 KB into the first-paint bundle. The plain-number helpers now live in `springs.ts`. Check `first-load` after any import into the page from `character/`.
+
+## Focus after an animated swap
+
+With `AnimatePresence mode="wait"`, a new element mounts only after the old one has left, and on a slow device a timeout is not enough. Focus is moved from the element's ref callback when it mounts.

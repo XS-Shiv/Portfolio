@@ -1,10 +1,14 @@
 /**
  * All words on the site live here. Edit freely; no component needs to change.
  *
- * State 2 reads top to bottom: a status line in the top bar, the title,
- * subtitle and two serif lines (all typed in, one after another), the main
- * button with restart beside it, and three glass cards. Once State 2 is up the
- * page scrolls: below the hero come one section per card, then a contact block.
+ * State 2 is one screen that never scrolls: a status line, the title, subtitle
+ * and two asides (spoken aloud and revealed word by word, one after another),
+ * the main button with restart beside it, and three glass cards. The button and
+ * the cards open their section in place of the introduction.
+ *
+ * Every line in intro.lines and intro.body is spoken. After editing one, run
+ * scripts/make_voice.py to regenerate the clips; until then that line is read
+ * by the browser's own voice.
  *
  * No full stops anywhere: where a line has two sentences, "\n" breaks it into
  * two lines instead.
@@ -42,6 +46,8 @@ export const site = {
   description:
     "Shivanand Shukla is an AI-first product manager who builds what he plans. Click the monitor to say hi.",
   connectLabel: "Let's talk",
+  /** Top-left signature, every state. */
+  signature: "Shiv.",
 };
 
 export const contact: Link[] = [
@@ -106,7 +112,7 @@ export const intro = {
   ] as Card[],
 };
 
-/** One section per card, in the same order, reached by scrolling. */
+/** One section per card, in the same order; opens in place of the introduction. */
 export const sections: Section[] = [
   {
     id: "situation",
@@ -140,15 +146,9 @@ export const sections: Section[] = [
   },
 ];
 
-export const outro = {
-  status: "END OF TRANSMISSION_",
-  title: "Let's talk",
-  line: "The human reads every message\nThe machine just forwards them",
-  top: "Back to the machine",
-};
-
 export const hints = {
   restart: "Start over",
+  back: "Back",
   soundOn: "Turn sound off",
   soundOff: "Turn sound on",
 };

@@ -1,4 +1,4 @@
-import { T } from "../timings";
+import { MOTION, T } from "../timings";
 
 /**
  * The monitor's screen. Draws everything live onto a 2D canvas that the 3D
@@ -69,6 +69,10 @@ export class ScreenEngine {
   private twinkleAt = -1e9;
   private twinkleEye = 0;
   private gaze = { x: 0, y: 0 };
+  private parallax = { x: 0, y: 0 };
+  private voice = 0;
+  private voiceSmooth = 0;
+  private flickUntil = 0;
   private pics: Pic[] = [];
   private picIndex = 0;
   private tintIndex = 0;
@@ -185,6 +189,23 @@ export class ScreenEngine {
     this.gaze.y = Math.max(-1, Math.min(1, y));
   }
 
+  /** The glass has depth: content shifts against the head's turn, -1..1 on each axis. */
+  setParallax(x: number, y: number) {
+    this.parallax.x = Math.max(-1, Math.min(1, x));
+    this.parallax.y = Math.max(-1, Math.min(1, y));
+  }
+
+  /** Live voice amplitude 0..1; while it is above zero the face talks to it. */
+  setVoice(level: number) {
+    this.voice = level;
+  }
+
+  /** One frame of flicker, when the head snaps after a fast flick. */
+  flick(now = performance.now()) {
+    if (this.reducedMotion) return;
+    this.flickUntil = now + 50;
+  }
+
   /** Draw a frame. Throttled to ~30fps; returns true when the canvas changed. */
   draw(now = performance.now()): boolean {
     if (now - this.last < 33) return false;
@@ -207,6 +228,7 @@ export class ScreenEngine {
       this.flickerUntil = now + T.nudgeFlicker;
     }
 
+    if (now < this.flickUntil) brightness = 0.55;
     if (now < this.flickerUntil) {
       const step = Math.floor((this.flickerUntil - now) / (T.nudgeFlicker / 3));
       brightness = [0.25, 1.35, 0.5, 1][step % 4];
@@ -219,6 +241,11 @@ export class ScreenEngine {
     }
 
     this.background();
+    // content sits a little behind the curved glass: it shifts against the turn
+    const px = this.reducedMotion ? 0 : this.parallax.x * MOTION.parallaxPx;
+    const py = this.reducedMotion ? 0 : this.parallax.y * MOTION.parallaxPx * 0.6;
+    c.save();
+    c.translate(px, py);
     if (this.mode === "text") {
       this.drawStars(now);
       this.drawText(now, brightness);
@@ -228,10 +255,10 @@ export class ScreenEngine {
     } else {
       this.drawEyes(now);
       this.drawCaption(now);
-      if (now < this.slipUntil) this.drawTear();
     }
+    c.restore();
+    if (this.mode === "eyes" && now < this.slipUntil) this.drawTear();
     this.finish(brightness);
-    void c;
     return true;
   }
 
@@ -296,14 +323,14 @@ export class ScreenEngine {
     const caretOn = this.reducedMotion || Math.floor(now / 530) % 2 === 0;
     const hasCaret = this.text.endsWith("_");
     const body = hasCaret ? this.text.slice(0, -1) : this.text;
-    const x = W * 0.08;
-    const y = H * 0.86;
+    // centred on the glass, measured with the caret so the line never shifts when it blinks
+    const w = c.measureText(body).width;
+    const full = w + (hasCaret ? c.measureText("_").width : 0);
+    const x = (W - full) / 2;
+    const y = H * 0.5 + Math.round(H * 0.075) * 0.32;
     const jitter = now < this.flickerUntil ? (Math.random() - 0.5) * 8 : 0;
     this.glowText(body, x + jitter, y, Math.min(1, brightness));
-    if (hasCaret && caretOn) {
-      const w = c.measureText(body).width;
-      this.glowText("_", x + jitter + w, y, Math.min(1, brightness));
-    }
+    if (hasCaret && caretOn) this.glowText("_", x + jitter + w, y, Math.min(1, brightness));
   }
 
   private drawBootLine(now: number) {
@@ -312,8 +339,8 @@ export class ScreenEngine {
     const since = now - this.modeAt - T.powerOn;
     const chars = this.reducedMotion ? this.bootText.length : Math.max(0, Math.floor(since / 22));
     const shown = "> " + this.bootText.slice(0, chars);
-    const x = W * 0.08;
-    const y = H * 0.5;
+    const x = (W - c.measureText("> " + this.bootText + "_").width) / 2;
+    const y = H * 0.5 + Math.round(H * 0.075) * 0.32;
     this.glowText(shown, x, y);
     if (Math.floor(now / 200) % 2 === 0) this.glowText("_", x + c.measureText(shown).width, y);
   }
@@ -436,10 +463,15 @@ export class ScreenEngine {
     const open = bt < blinkDur ? 1 - Math.sin((bt / blinkDur) * Math.PI) * 0.94 : 1;
 
     // talking: a smooth, speech-like wobble in size and brightness
+    // talking follows the live voice amplitude when there is one, else a speech-like wobble
+    this.voiceSmooth += (this.voice - this.voiceSmooth) * (this.voice > this.voiceSmooth ? 0.6 : 0.25);
     let talk = 0;
-    if (this.talking && !this.reducedMotion) {
-      const s = now / 1000;
-      talk = Math.abs(Math.sin(s * 11.3) * 0.6 + Math.sin(s * 17.9 + 1.3) * 0.4);
+    if (!this.reducedMotion) {
+      if (this.voiceSmooth > 0.02) talk = Math.min(1, this.voiceSmooth * 1.4);
+      else if (this.talking) {
+        const s = now / 1000;
+        talk = Math.abs(Math.sin(s * 11.3) * 0.6 + Math.sin(s * 17.9 + 1.3) * 0.4);
+      }
     }
     const fade = this.reducedMotion ? 1 : Math.min(1, (now - this.modeAt) / 260);
     const r = W * 0.125 * (1 + talk * 0.09);

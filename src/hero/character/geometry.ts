@@ -12,21 +12,24 @@ export const HEAD_CENTER = { x: 700, y: 445 };
 export const BODY_TOP = 560;
 export const BODY_SIZE = { w: 1254, h: 1054 };
 
-/** The screen glass in the photo, corners clockwise from top-left. */
+/**
+ * The screen glass in the first-paint image (front-blank.*, a still of the 3D
+ * character baked with scripts/bake_still.py), corners clockwise from top-left.
+ */
 export const SCREEN_QUAD: [number, number][] = [
-  [543, 201],
-  [998, 217],
-  [993, 646],
-  [540, 649],
+  [476, 209],
+  [931, 224],
+  [921, 650],
+  [467, 644],
 ];
 
-/** The five LEDs under the screen in the photo. */
+/** The five LEDs under the screen in the first-paint image. */
 export const LEDS: [number, number][] = [
-  [881, 698],
-  [907, 701],
-  [933, 703],
-  [959, 703],
-  [985, 705],
+  [812, 715],
+  [837, 715],
+  [862, 716],
+  [886, 716],
+  [911, 716],
 ];
 
 /**

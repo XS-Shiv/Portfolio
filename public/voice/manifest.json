@@ -1,0 +1,70 @@
+{
+  "voice": "am_michael",
+  "tool": "Kokoro v1.0 (kokoro-onnx)",
+  "lines": [
+    {
+      "text": "Hey, I'm Shiv",
+      "src": "/voice/line-0.mp3",
+      "duration": 0.944,
+      "words": [
+        0.0,
+        0.325,
+        0.619
+      ]
+    },
+    {
+      "text": "I make decisions for a living",
+      "src": "/voice/line-1.mp3",
+      "duration": 1.621,
+      "words": [
+        0.0,
+        0.137,
+        0.447,
+        0.966,
+        1.138,
+        1.276
+      ]
+    },
+    {
+      "text": "At least, I used to make all of them myself\nThe machine has started developing opinions",
+      "src": "/voice/line-2.mp3",
+      "duration": 5.369,
+      "words": [
+        0.0,
+        0.181,
+        0.445,
+        0.605,
+        0.966,
+        1.147,
+        1.509,
+        1.71,
+        1.891,
+        2.113,
+        2.837,
+        3.023,
+        3.544,
+        3.73,
+        4.122,
+        4.829
+      ]
+    },
+    {
+      "text": "I let it handle the introduction\nIn hindsight, that was generous",
+      "src": "/voice/line-3.mp3",
+      "duration": 3.972,
+      "words": [
+        0.0,
+        0.143,
+        0.323,
+        0.484,
+        0.844,
+        1.024,
+        2.063,
+        2.269,
+        2.824,
+        3.077,
+        3.307
+      ]
+    }
+  ]
+}

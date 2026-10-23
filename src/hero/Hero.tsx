@@ -1,20 +1,26 @@
 "use client";
 
 import { AnimatePresence, domAnimation, LazyMotion, m as motion } from "motion/react";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Character, type Box } from "./character/Character";
 import { HEAD_CENTER, SRC } from "./character/geometry";
+import { soft } from "./character/springs";
 import type { HeadControl } from "./character/types";
-import { contact, hints, intro, outro, screen, sections, site, status } from "./content";
-import { isCompact, talkBox } from "./layout";
+import { contact, hints, intro, screen, sections, site, status } from "./content";
+import { idleBox, isCompact, talkBox } from "./layout";
 import { initialState, ledOf, reducer } from "./machine";
 import { flipAt, flipCount } from "./pronouns";
 import { ScreenEngine } from "./screen/engine";
-import { Sound } from "./sound";
-import { EASE, HEAD, T, TAP_SLOP } from "./timings";
+import { savedSoundPref, Sound } from "./sound";
+import { EASE, MOTION, T, TAP_SLOP } from "./timings";
+import { Narrator, type Speech } from "./voice";
 
-const clamp = (v: number, a = -1, b = 1) => Math.min(b, Math.max(a, v));
-const isPunct = (ch: string) => ".,?!".includes(ch);
+const DEG = Math.PI / 180;
+
+/** Live tuning panel for every motion constant: `npm run dev`, then ?tune. Stripped from production builds. */
+const Tune =
+  process.env.NODE_ENV === "development" ? dynamic(() => import("./dev/Tune"), { ssr: false }) : () => null;
 const arrive = { duration: 0.3, ease: EASE.arrive };
 
 function useMedia(query: string) {
@@ -29,14 +35,17 @@ function useMedia(query: string) {
   return match;
 }
 
+type FlipStage = "in" | "hold" | "notice" | "out";
+type FlipState = { slot: string; k: number; stage: FlipStage };
+
 /** Text with one word mid-flip (I <-> we), or plain text when nothing is flipping. */
-function Flip({ text, k }: { text: string; k: number | null }) {
-  const parts = k === null ? null : flipAt(text, k);
-  if (!parts) return <>{text}</>;
+function Flip({ text, flip }: { text: string; flip: { k: number; stage: FlipStage } | null }) {
+  const parts = flip === null ? null : flipAt(text, flip.k);
+  if (!parts || !flip) return <>{text}</>;
   return (
     <>
       {parts.before}
-      <span className="glitch glitch-word" data-text={parts.word}>
+      <span className="glitch glitch-word" data-text={parts.word} data-stage={flip.stage}>
         {parts.word}
       </span>
       {parts.after}
@@ -45,17 +54,27 @@ function Flip({ text, k }: { text: string; k: number | null }) {
 }
 
 /**
- * A typewriter line that never shifts the layout: an invisible copy of the full
- * text holds the space, and the typed part is drawn on top of it.
+ * A line that never shifts the layout: an invisible copy of the full text holds
+ * the space, and the revealed part is drawn on top of it.
  */
-function Typed({ full, shown, k, caret }: { full: string; shown: string; k: number | null; caret?: boolean }) {
+function Typed({
+  full,
+  shown,
+  flip,
+  caret,
+}: {
+  full: string;
+  shown: string;
+  flip: { k: number; stage: FlipStage } | null;
+  caret?: boolean;
+}) {
   return (
     <span className="typed">
       <span className="typed-ghost" aria-hidden>
         {full}
       </span>
       <span className="typed-live">
-        {shown === full ? <Flip text={full} k={k} /> : shown}
+        {shown === full ? <Flip text={full} flip={flip} /> : shown}
         {caret && <span className="caret" />}
       </span>
     </span>
@@ -90,14 +109,23 @@ function SoundIcon({ on }: { on: boolean }) {
           strokeLinecap="round"
         />
       ) : (
-        <path
-          d="M16 9.5l5 5M21 9.5l-5 5"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
+        <path d="M16 9.5l5 5M21 9.5l-5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
       )}
+    </svg>
+  );
+}
+
+function OutArrow() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden>
+      <path
+        d="M7 17 17 7M9 7h8v8"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -109,33 +137,38 @@ export default function Hero() {
 
   const [engine, setEngine] = useState<ScreenEngine | null>(null);
   const sound = useRef<Sound | null>(null);
-  const [soundOn, setSoundOn] = useState(false);
+  const narrator = useRef<Narrator | null>(null);
+  const speech = useRef<Speech | null>(null);
+  const [soundOn, setSoundOn] = useState(true);
   const head = useRef<HeadControl>({
-    yaw: HEAD.restYawDeg,
-    pitch: HEAD.restPitchDeg,
+    yaw: MOTION.neutralYaw,
+    pitch: MOTION.neutralPitch,
     roll: 0,
     yawBias: 0,
-    body: 1,
+    movedAt: 0,
+    ease: MOTION.leaveEase,
     nodAt: -1e9,
     frozen: false,
+    voice: 0,
   });
+  const heroEl = useRef<HTMLElement>(null);
   const [viewport, setViewport] = useState<{ w: number; h: number } | null>(null);
   const [paused, setPaused] = useState(false);
   const [panel, setPanel] = useState<"none" | "connect">("none");
   const [typed, setTyped] = useState<{ id: number; n: number }>({ id: -1, n: 0 });
   const [announce, setAnnounce] = useState("");
-  const [flip, setFlip] = useState<{ slot: string; k: number } | null>(null);
+  const [flip, setFlip] = useState<FlipState | null>(null);
   const [cardChars, setCardChars] = useState(0);
-  /** Scrolled past the top of the hero (hides the status line), or past all of it (pauses the 3D). */
-  const [scrolled, setScrolled] = useState(false);
-  const [heroHidden, setHeroHidden] = useState(false);
-  /** Any scroll at all: the top bar gets a frosted backing so it reads over the content. */
-  const [stuck, setStuck] = useState(false);
-  /** Once the visitor touches the speaker, their choice wins over the automatic start. */
-  const soundTouched = useRef(false);
+  const [section, setSection] = useState<string | null>(null);
   const connectBtn = useRef<HTMLButtonElement>(null);
   const mainCta = useRef<HTMLButtonElement>(null);
+  const backBtn = useRef<HTMLButtonElement>(null);
   const byKey = useRef(false);
+  /** ?pose=yaw,pitch holds the head at one angle (for checking extremes and screenshots). */
+  const fixedPose = useRef<[number, number] | null>(null);
+  const [tune, setTune] = useState(false);
+  /** ?still: the character frozen in its first pose with a blank screen, for baking the first-paint image. */
+  const [still, setStill] = useState(false);
 
   const talking = phase === "booting" || phase === "conversation";
 
@@ -145,53 +178,48 @@ export default function Hero() {
     e.showText(screen.idle);
     e.loadImages(screen.images);
     setEngine(e);
-    sound.current = new Sound();
-    const preload = window.setTimeout(() => sound.current?.preload(), 2500);
+    const s = new Sound();
+    sound.current = s;
+    narrator.current = new Narrator(s);
+    setSoundOn(savedSoundPref());
+    const params = new URLSearchParams(window.location.search);
+    setTune(params.has("tune"));
+    setStill(params.has("still"));
+    const pose = params.get("pose");
+    if (pose) {
+      const [y, p] = pose.split(",").map(Number);
+      if (Number.isFinite(y) && Number.isFinite(p)) fixedPose.current = [y, p];
+    }
+    const preload = window.setTimeout(() => s.preload(), 2500);
     const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
     onResize();
     window.addEventListener("resize", onResize);
     const onVis = () => setPaused(document.hidden);
     document.addEventListener("visibilitychange", onVis);
+    // the first click, tap or key anywhere unlocks audio (browsers need a gesture)
+    const unlock = () => s.unlock();
+    window.addEventListener("pointerdown", unlock, { capture: true, once: true });
+    window.addEventListener("keydown", unlock, { capture: true, once: true });
     return () => {
       window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pointerdown", unlock, { capture: true });
+      window.removeEventListener("keydown", unlock, { capture: true });
       clearTimeout(preload);
-      sound.current?.setEnabled(false);
+      narrator.current?.stop();
+      s.dispose();
     };
   }, []);
 
   useEffect(() => {
-    head.current.frozen = reduced;
-    if (engine) engine.reducedMotion = reduced;
-  }, [reduced, engine]);
+    head.current.frozen = reduced || still;
+    if (engine) engine.reducedMotion = reduced || still;
+  }, [reduced, engine, still]);
 
   // ---------- layout ----------
+  const compact = viewport ? isCompact(viewport.w, viewport.h) : false;
   const talk = viewport ? talkBox(viewport.w, viewport.h) : null;
   const target: Box | null = talking ? (talk?.box ?? null) : null;
-
-  // ---------- scrolling: only once State 2 is up ----------
-  useEffect(() => {
-    const on = phase === "conversation";
-    document.documentElement.dataset.scroll = on ? "on" : "off";
-    if (!on) window.scrollTo(0, 0);
-  }, [phase]);
-
-  useEffect(() => {
-    const onScroll = () => {
-      const y = window.scrollY;
-      const h = window.innerHeight;
-      setStuck(y > 8);
-      setScrolled(y > h * 0.35);
-      setHeroHidden(y > h * 0.98);
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  const goTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
-  };
 
   // ---------- screen + phase choreography ----------
   useEffect(() => {
@@ -199,7 +227,9 @@ export default function Hero() {
     const timers: number[] = [];
     const later = (fn: () => void, ms: number) => timers.push(window.setTimeout(fn, ms));
 
-    if (phase === "idle") {
+    if (still) {
+      engine.showText("");
+    } else if (phase === "idle") {
       engine.showText(screen.idle);
       // alternate: picture, text nudge, picture, picture, text nudge, ...
       let k = 0;
@@ -208,19 +238,17 @@ export default function Hero() {
         later(
           () => {
             const pictureTurn = n++ % 3 !== 1;
-            if (!(pictureTurn && engine.popImage())) {
-              engine.flickerTo(screen.nudges[k++ % screen.nudges.length]);
-            }
+            if (!(pictureTurn && engine.popImage())) engine.flickerTo(screen.nudges[k++ % screen.nudges.length]);
             nudge();
           },
           T.nudgeMin + Math.random() * (T.nudgeMax - T.nudgeMin),
         );
       };
-      // the first picture comes early, so a quick visitor still sees one
-      later(() => engine.popImage(), 2200);
+      later(() => engine.popImage(), T.firstPop);
       nudge();
     } else if (phase === "booting") {
       sound.current?.hum();
+      narrator.current?.load();
       engine.powerOn(screen.boot);
       later(() => engine.showFace(), reduced ? 0 : T.bootLineUntil);
       later(() => dispatch({ type: "BOOT_DONE" }), reduced ? 0 : T.slideDelay + T.slide);
@@ -228,53 +256,82 @@ export default function Hero() {
       engine.setTalking(false);
       engine.flickerTo(screen.idle);
       setPanel("none");
+      setSection(null);
       later(() => dispatch({ type: "RESTART_DONE" }), reduced ? 0 : T.restartSlide);
     }
     return () => timers.forEach(clearTimeout);
-  }, [phase, engine, reduced]);
+  }, [phase, engine, reduced, still]);
 
-  // ---------- typing: title, subtitle, then the body lines (a little faster) ----------
+  // ---------- the lines: spoken, revealed word by word with the voice ----------
   const line = transcript[typedUpTo];
   useEffect(() => {
-    if (!talking || !line) return;
+    if (!talking || !line || !narrator.current) return;
     if (reduced) {
       setTyped({ id: line.id, n: line.text.length });
       dispatch({ type: "LINE_TYPED" });
       return;
     }
-    let n = 0;
-    let timer = 0;
+    const timers: number[] = [];
     setTyped({ id: line.id, n: 0 });
-    // body lines type two characters per tick, so they stay quick without a render per letter
-    const chunk = typedUpTo >= intro.lines.length ? 2 : 1;
-    const step = () => {
-      n = Math.min(line.text.length, n + chunk);
-      setTyped({ id: line.id, n });
-      if (n < line.text.length) {
-        const speed = typedUpTo >= intro.lines.length ? T.bodySpeed : 1;
-        timer = window.setTimeout(
-          step,
-          speed * (T.perChar + (isPunct(line.text[n - 1]) ? T.punctuationPause : 0)),
-        );
-      } else {
-        engine?.setTalking(false);
-        timer = window.setTimeout(() => dispatch({ type: "LINE_TYPED" }), T.betweenLines);
-      }
-    };
-    timer = window.setTimeout(
-      () => {
-        engine?.setTalking(true);
-        step();
-      },
-      typedUpTo === 0 ? T.firstLineAt : 120,
+    timers.push(
+      window.setTimeout(
+        () => {
+          engine?.setTalking(true);
+          speech.current = narrator.current!.speak(
+            line.text,
+            (n) => setTyped({ id: line.id, n }),
+            () => {
+              engine?.setTalking(false);
+              timers.push(window.setTimeout(() => dispatch({ type: "LINE_TYPED" }), T.betweenLines));
+            },
+          );
+        },
+        typedUpTo === 0 ? T.firstLineAt : 140,
+      ),
     );
     return () => {
-      clearTimeout(timer);
+      timers.forEach(clearTimeout);
+      speech.current?.cancel();
+      speech.current = null;
       engine?.setTalking(false);
     };
     // phase intentionally left out: booting -> conversation must not restart a line
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [line?.id, talking, reduced, engine]);
+
+  // reduced motion: the text is all there at once, and the voice still reads it
+  useEffect(() => {
+    if (!reduced || phase !== "booting" || !narrator.current) return;
+    const q = narrator.current.queue(transcript.map((l) => l.text));
+    speech.current = q;
+    return () => {
+      if (speech.current === q) speech.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reduced, phase]);
+
+  // the voice's loudness drives the face and makes the buttons pulse, outside React
+  useEffect(() => {
+    if (!talking) return;
+    let raf = 0;
+    let last = -1;
+    const tick = () => {
+      const lvl = narrator.current?.level() ?? 0;
+      head.current.voice = lvl;
+      const q = Math.round(lvl * 100) / 100;
+      if (q !== last) {
+        last = q;
+        heroEl.current?.style.setProperty("--vox", q.toFixed(2));
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      head.current.voice = 0;
+      heroEl.current?.style.setProperty("--vox", "0");
+    };
+  }, [talking]);
 
   const textOf = (i: number) => {
     const l = transcript[i];
@@ -284,11 +341,13 @@ export default function Hero() {
     return "";
   };
   const done = talking && transcript.length > 0 && typedUpTo >= transcript.length;
+  /** The button and cards arrive while he is still talking, so they can pulse with his voice. */
+  const ctaShown = talking && transcript.length > 0 && typedUpTo > T.ctaAfterLine;
 
-  // the cards type in together once the body has finished
+  // the cards' text types in together once they land
   const cardLen = Math.max(...intro.cards.map((c) => c.label.length + c.sub.length));
   useEffect(() => {
-    if (!done) {
+    if (!ctaShown) {
       setCardChars(0);
       return;
     }
@@ -303,15 +362,24 @@ export default function Hero() {
       if (n >= cardLen) clearInterval(id);
     }, T.cardPerChar);
     return () => clearInterval(id);
-  }, [done, reduced, cardLen]);
+  }, [ctaShown, reduced, cardLen]);
   const allDone = done && cardChars >= cardLen;
 
+  // screen readers hear each line as it completes
   useEffect(() => {
-    if (done) setAnnounce([...intro.lines, ...intro.body].join(". ").replace(/\n/g, " "));
-    else setAnnounce("");
-  }, [done]);
+    if (!talking || typedUpTo === 0) {
+      setAnnounce("");
+      return;
+    }
+    setAnnounce(
+      transcript
+        .slice(0, typedUpTo)
+        .map((l) => l.text.replace(/\n/g, ". "))
+        .join(". "),
+    );
+  }, [typedUpTo, talking, transcript]);
 
-  // keyboard visitors land on the main button once it appears
+  // keyboard visitors land on the main button once he has finished
   useEffect(() => {
     if (!done || !byKey.current) return;
     byKey.current = false;
@@ -319,9 +387,9 @@ export default function Hero() {
     return () => clearTimeout(id);
   }, [done]);
 
-  // ---------- the recurring I <-> we flip ----------
+  // ---------- the occasional I -> we beat ----------
   useEffect(() => {
-    if (!allDone || reduced) return;
+    if (!allDone || reduced || section) return;
     const slots = [
       ...intro.lines.map((text, i) => ({ slot: `line-${i}`, text, weight: 3 })),
       ...intro.body.map((text, i) => ({ slot: `body-${i}`, text, weight: 2 })),
@@ -332,88 +400,103 @@ export default function Hero() {
     });
     if (!slots.length) return;
     const timers: number[] = [];
+    const at = (fn: () => void, ms: number) => timers.push(window.setTimeout(fn, ms));
     const loop = (first: boolean) => {
-      // the first flip comes a little sooner, so a quick visitor still sees one
-      const wait = first ? 1500 : T.flipEveryMin + Math.random() * (T.flipEveryMax - T.flipEveryMin);
-      timers.push(
-        window.setTimeout(() => {
-          const pick = slots[Math.floor(Math.random() * slots.length)];
-          setFlip({ slot: pick.slot, k: Math.floor(Math.random() * pick.count) });
-          engine?.glitch(180);
-          timers.push(
-            window.setTimeout(() => {
-              setFlip(null);
-              loop(false);
-            }, T.flipHold),
-          );
-        }, wait),
-      );
+      const wait = first ? T.flipFirst : T.flipEveryMin + Math.random() * (T.flipEveryMax - T.flipEveryMin);
+      at(() => {
+        const pick = slots[Math.floor(Math.random() * slots.length)];
+        const k = Math.floor(Math.random() * pick.count);
+        // glitch in -> hold "we" -> a small flicker as he notices -> glitch back to "I"
+        setFlip({ slot: pick.slot, k, stage: "in" });
+        engine?.glitch(180);
+        sound.current?.glitch();
+        let t = T.flipIn;
+        at(() => setFlip({ slot: pick.slot, k, stage: "hold" }), t);
+        t += T.flipHold;
+        at(() => setFlip({ slot: pick.slot, k, stage: "notice" }), t);
+        t += T.flipNotice;
+        at(() => setFlip({ slot: pick.slot, k, stage: "hold" }), t);
+        t += 260;
+        at(() => {
+          setFlip({ slot: pick.slot, k, stage: "out" });
+          engine?.glitch(140);
+        }, t);
+        t += T.flipOut;
+        at(() => {
+          setFlip(null);
+          loop(false);
+        }, t);
+      }, wait);
     };
     loop(true);
     return () => {
       timers.forEach(clearTimeout);
       setFlip(null);
     };
-  }, [allDone, reduced, engine]);
-  const flipK = (slot: string) => (flip?.slot === slot ? flip.k : null);
+  }, [allDone, reduced, engine, section]);
+  const flipOf = (slot: string) => (flip?.slot === slot ? { k: flip.k, stage: flip.stage } : null);
 
-  // ---------- head follows the pointer ----------
-  // In State 2 the head holds an imposing pose (turned toward the text, tilted,
-  // on a bigger frame) and follows the cursor only a little around it.
-  const compact = viewport ? isCompact(viewport.w, viewport.h) : false;
+  // ---------- the head looks at the pointer ----------
+  // State 2 holds a three-quarter pose toward the text and follows a little around it.
   const pose = talking
     ? compact
-      ? { yaw: -8, pitch: 2, roll: 3, body: 1, follow: 0.6 }
-      : {
-          yaw: HEAD.conversationYawBiasDeg,
-          pitch: HEAD.conversationPitchDeg,
-          roll: HEAD.conversationRollDeg,
-          body: HEAD.conversationBody,
-          follow: HEAD.conversationFollow,
-        }
-    : { yaw: HEAD.restYawDeg, pitch: HEAD.restPitchDeg, roll: 0, body: 1, follow: 1 };
+      ? { yaw: MOTION.talkYawCompact, pitch: MOTION.talkPitchCompact, roll: 2, follow: MOTION.talkFollowCompact }
+      : { yaw: MOTION.talkYaw, pitch: MOTION.talkPitch, roll: MOTION.talkRoll, follow: MOTION.talkFollow }
+    : { yaw: 0, pitch: 0, roll: 0, follow: 1 };
+  const neutral = talking
+    ? { yaw: pose.yaw + 3, pitch: pose.pitch }
+    : { yaw: MOTION.neutralYaw, pitch: MOTION.neutralPitch };
 
   const aimAt = useCallback(
     (x: number, y: number) => {
-      if (!viewport || reduced) return;
-      const box = target ?? ({ s: 0, x: viewport.w / 2, y: viewport.h * 0.46 } as Box);
-      const cx = box.s ? box.x + (HEAD_CENTER.x / SRC) * box.s : box.x;
-      const cy = box.s ? box.y + (HEAD_CENTER.y / SRC) * box.s : box.y;
-      const dx = clamp((x - cx) / (viewport.w * 0.5));
-      const dy = clamp((y - cy) / (viewport.h * 0.5));
-      if (talking) {
-        head.current.yaw = pose.yaw + dx * HEAD.maxYawDeg * pose.follow;
-        head.current.pitch = pose.pitch + dy * HEAD.maxPitchDeg * pose.follow;
-      } else {
-        head.current.yaw = dx * HEAD.maxYawDeg;
-        head.current.pitch = dy * (dy > 0 ? HEAD.maxPitchDeg : HEAD.maxPitchUpDeg);
-      }
+      if (!viewport || reduced || fixedPose.current) return;
+      const box = target ?? idleBox(viewport.w, viewport.h);
+      const cx = box.x + (HEAD_CENTER.x / SRC) * box.s;
+      const cy = box.y + (HEAD_CENTER.y / SRC) * box.s;
+      // project onto a plane in front of the head, so it points at the cursor
+      const d = MOTION.planeDist * viewport.h;
+      const yaw = (Math.atan2(x - cx, d) / DEG) * MOTION.gain;
+      const pitch = (Math.atan2(y - cy, d) / DEG) * MOTION.gain;
+      const h = head.current;
+      h.yaw = pose.yaw + soft(yaw, MOTION.maxYaw) * pose.follow;
+      h.pitch = pose.pitch + soft(pitch, pitch > 0 ? MOTION.maxPitchDown : MOTION.maxPitchUp) * pose.follow;
+      h.movedAt = performance.now();
+      h.ease = 0;
     },
     // pose is derived from talking and compact
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [viewport, target, talking, compact, reduced],
   );
 
-  // when the state changes, settle into that state's pose
+  const settle = useCallback(
+    (rate: number) => {
+      const h = head.current;
+      const f = fixedPose.current;
+      h.yaw = f ? pose.yaw + f[0] : neutral.yaw;
+      h.pitch = f ? pose.pitch + f[1] : neutral.pitch;
+      h.ease = f ? 0 : rate;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [talking, compact],
+  );
+
+  // when the state changes, swing into that state's pose
   useEffect(() => {
-    head.current.yaw = pose.yaw;
-    head.current.pitch = pose.pitch;
-    head.current.roll = pose.roll;
-    head.current.yawBias = talking ? pose.yaw : 0;
-    head.current.body = pose.body;
+    const h = head.current;
+    h.roll = pose.roll;
+    h.yawBias = talking ? pose.yaw : 0;
+    settle(5);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [talking, compact]);
 
-  const down = useRef<{ x: number; y: number; id: number } | null>(null);
+  const down = useRef<{ x: number; y: number; id: number; touch: boolean } | null>(null);
   useEffect(() => {
     const move = (e: PointerEvent) => {
-      if (e.pointerType === "mouse" || down.current) aimAt(e.clientX, e.clientY + window.scrollY);
+      if (e.pointerType === "mouse" || down.current) aimAt(e.clientX, e.clientY);
     };
+    // the cursor left the window: ease to a neutral, slightly off-centre pose
     const leave = (e: MouseEvent) => {
-      if (!e.relatedTarget) {
-        head.current.yaw = pose.yaw;
-        head.current.pitch = pose.pitch;
-      }
+      if (!e.relatedTarget) settle(MOTION.leaveEase);
     };
     window.addEventListener("pointermove", move);
     document.addEventListener("mouseout", leave);
@@ -421,29 +504,34 @@ export default function Hero() {
       window.removeEventListener("pointermove", move);
       document.removeEventListener("mouseout", leave);
     };
-  }, [aimAt, talking]);
+  }, [aimAt, settle]);
+
+  /** A hovered or focused button draws the head's attention. */
+  const glance = (e: React.SyntheticEvent<HTMLElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    aimAt(r.left + r.width / 2, r.top + r.height / 2);
+  };
 
   // ---------- starting ----------
   const start = useCallback(() => {
     if (phase !== "idle") return;
     setPanel("none");
-    // the click into State 2 is a user gesture, so the music may start here
-    if (!soundTouched.current && !soundOn) {
-      setSoundOn(true);
-      sound.current?.setEnabled(true);
-    }
+    sound.current?.unlock();
     dispatch({ type: "START" });
-  }, [phase, soundOn]);
+  }, [phase]);
 
   const isUi = (t: EventTarget | null) =>
     t instanceof Element && !!t.closest("[data-ui], a, button, input, [role='dialog']");
 
   const onPointerDown = (e: React.PointerEvent) => {
-    down.current = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    down.current = { x: e.clientX, y: e.clientY, id: e.pointerId, touch: e.pointerType !== "mouse" };
+    if (e.pointerType !== "mouse") aimAt(e.clientX, e.clientY);
   };
   const onPointerUp = (e: React.PointerEvent) => {
     const d = down.current;
     down.current = null;
+    // a finger lifted: the head eases back instead of staring at where it was
+    if (d?.touch) settle(MOTION.leaveEase);
     if (!d || isUi(e.target)) return;
     if (panel !== "none") {
       setPanel("none");
@@ -469,340 +557,347 @@ export default function Hero() {
     return () => window.removeEventListener("keydown", key);
   }, [phase, panel, start]);
 
+  /** Stop talking now: the rest of the introduction appears at once. */
+  const hush = () => {
+    speech.current?.cancel();
+    speech.current = null;
+    narrator.current?.stop();
+    if (typedUpTo < transcript.length) dispatch({ type: "FINISH_ALL" });
+  };
+
+  const open = (id: string, e?: React.MouseEvent) => {
+    hush();
+    head.current.nodAt = performance.now();
+    byKey.current = !!e && e.detail === 0;
+    setSection(id);
+  };
+  // keyboard visitors land on the section's Back button as soon as it mounts
+  const focusNext = useRef<"back" | "cta" | null>(null);
+  useEffect(() => {
+    if (!byKey.current) return;
+    byKey.current = false;
+    focusNext.current = section ? "back" : "cta";
+    const el = section ? backBtn.current : mainCta.current;
+    if (el && document.contains(el)) {
+      focusNext.current = null;
+      el.focus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
+  const focusOnMount = (which: "back" | "cta") => (el: HTMLButtonElement | null) => {
+    if (which === "back") backBtn.current = el;
+    else mainCta.current = el;
+    if (el && focusNext.current === which) {
+      focusNext.current = null;
+      el.focus();
+    }
+  };
+
   const restart = () => {
-    window.scrollTo(0, 0);
+    hush();
     dispatch({ type: "RESTART" });
   };
 
   const toggleSound = () => {
-    soundTouched.current = true;
     const on = !soundOn;
     setSoundOn(on);
     sound.current?.setEnabled(on);
+    if (!on) window.speechSynthesis?.cancel();
+  };
+
+  /** Clicking the text finishes the line he is saying. */
+  const skipLine = (e: React.MouseEvent) => {
+    if (section || (e.target as Element).closest("button, a")) return;
+    speech.current?.finish();
   };
 
   const led = ledOf(state);
   const compactTop = talk && talk.columnTop ? `${talk.columnTop}px` : undefined;
   const statusText = phase === "booting" ? status.booting : phase === "conversation" ? status.ready : "";
-  // the main button, restart and the cards all land together, in one beat
   const reveal = {
     initial: { opacity: 0, y: reduced ? 0 : 8 },
     animate: { opacity: 1, y: 0 },
     transition: { ...arrive, duration: reduced ? 0 : 0.35 },
   };
+  const sec = sections.find((s) => s.id === section) ?? null;
 
   return (
     <LazyMotion features={domAnimation} strict>
       <main className="page">
-      <section
-        className="hero"
-        data-phase={phase}
-        data-reduced={reduced ? "on" : "off"}
-        onPointerDown={onPointerDown}
-        onPointerUp={onPointerUp}
-        style={compactTop ? ({ "--column-top": compactTop } as React.CSSProperties) : undefined}
-      >
-        <h1 className="sr-only">{site.name}, AI-first product manager. Interactive introduction.</h1>
+        <section
+          ref={heroEl}
+          className="hero"
+          data-phase={phase}
+          data-section={section ? "open" : "none"}
+          data-reduced={reduced ? "on" : "off"}
+          onPointerDown={onPointerDown}
+          onPointerUp={onPointerUp}
+          style={compactTop ? ({ "--column-top": compactTop } as React.CSSProperties) : undefined}
+        >
+          <h1 className="sr-only">{site.name}, AI-first product manager. Interactive introduction.</h1>
 
-        <Character
-          engine={engine}
-          head={head.current}
-          led={led}
-          target={target}
-          transition={{
-            duration: phase === "restarting" ? T.restartSlide : T.slide,
-            delay: phase === "booting" ? T.slideDelay : 0,
-            instant: reduced,
-          }}
-          fadeBody={talking && !!talk?.columnTop}
-          paused={paused || heroHidden}
-        />
-
-        {/* ---------- top bar, every state ---------- */}
-        <header className="chrome" data-ui data-stuck={stuck ? "on" : "off"}>
-          <AnimatePresence mode="wait">
-            {statusText && !scrolled ? (
-              <motion.p
-                key={statusText}
-                className="chrome-status"
-                aria-hidden
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, transition: { duration: 0.12 } }}
-                transition={{ duration: 0.2 }}
-              >
-                <span>
-                  {"> "}
-                  {statusText.replace(/_$/, "")}
-                  {statusText.endsWith("_") && <span className="caret caret-block" />}
-                </span>
-              </motion.p>
-            ) : (
-              <span />
-            )}
-          </AnimatePresence>
-
-          <div className="chrome-right">
-            <button
-              type="button"
-              className="chrome-sound"
-              onClick={toggleSound}
-              aria-pressed={soundOn}
-              aria-label={soundOn ? hints.soundOn : hints.soundOff}
-            >
-              <SoundIcon on={soundOn} />
-            </button>
-            <button
-              ref={connectBtn}
-              type="button"
-              className="chrome-connect"
-              aria-expanded={panel === "connect"}
-              aria-controls="connect-panel"
-              onClick={() => setPanel(panel === "connect" ? "none" : "connect")}
-            >
-              <span className="glitch-hover" data-text={site.connectLabel}>
-                {site.connectLabel}
-              </span>
-              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
-                <path
-                  d="M7 17 17 7M9 7h8v8"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            </button>
-          </div>
-
-          <AnimatePresence>
-            {panel === "connect" && (
-              <motion.div
-                id="connect-panel"
-                role="dialog"
-                aria-label={site.connectLabel}
-                className="panel"
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeIn" } }}
-                transition={arrive}
-              >
-                <ul>
-                  {contact.map((c) => (
-                    <li key={c.label}>
-                      <a
-                        href={c.href}
-                        target={c.href.startsWith("http") ? "_blank" : undefined}
-                        rel="noreferrer"
-                      >
-                        <span className="panel-label">{c.label}</span>
-                        <span className="panel-value">
-                          {c.href.replace(/^mailto:|^https:\/\/(www\.)?/g, "")}
-                        </span>
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </header>
-
-        {/* ---------- State 1 ---------- */}
-        {phase === "idle" && (
-          <button
-            type="button"
-            className="sr-start"
-            onClick={(e) => {
-              byKey.current = e.detail === 0; // detail 0 = keyboard "click"
-              start();
+          <Character
+            engine={engine}
+            head={head.current}
+            led={led}
+            target={target}
+            transition={{
+              duration: phase === "restarting" ? T.restartSlide : T.slide,
+              delay: phase === "booting" ? T.slideDelay : 0,
+              instant: reduced,
             }}
-          >
-            Start the conversation
-          </button>
-        )}
+            fadeBody={talking && !!talk?.columnTop}
+            paused={paused}
+          />
 
-        {/* ---------- State 2 ---------- */}
-        <AnimatePresence>
-          {talking && (
-            <motion.section
-              className="column"
-              data-ui
-              aria-label="Introduction"
-              initial={{ opacity: 1 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeIn" } }}
-            >
-              <p className="intro-title" aria-hidden>
-                <Typed full={intro.lines[0]} shown={textOf(0)} k={flipK("line-0")} caret={typedUpTo === 0} />
-              </p>
-              <p className="intro-subtitle" aria-hidden>
-                <Typed full={intro.lines[1]} shown={textOf(1)} k={flipK("line-1")} caret={typedUpTo === 1} />
-              </p>
-              <div className="intro-body">
-                {intro.body.map((text, j) => {
-                  const i = intro.lines.length + j;
-                  return (
-                    <p key={j} aria-hidden>
-                      <Typed full={text} shown={textOf(i)} k={flipK(`body-${j}`)} caret={typedUpTo === i} />
-                    </p>
-                  );
-                })}
-              </div>
+          {/* ---------- top bar, every state ---------- */}
+          <header className="chrome" data-ui>
+            <p className="chrome-name">{site.signature}</p>
 
-              <div className="cta-row">
-                {done && (
-                  <>
-                    <motion.button
-                      ref={mainCta}
-                      type="button"
-                      className="cta-main"
-                      onClick={() => goTo(sections[0].id)}
-                      {...reveal}
-                    >
-                      {intro.primary}
-                      <Arrow size={20} />
-                    </motion.button>
-                    <motion.button
-                      type="button"
-                      className="restart"
-                      onClick={restart}
-                      aria-label={hints.restart}
-                      {...reveal}
-                    >
-                      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
-                        <path
-                          d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4v4.5H9"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </motion.button>
-                  </>
-                )}
-              </div>
-            </motion.section>
-          )}
-        </AnimatePresence>
+            <div className="chrome-right">
+              <button
+                type="button"
+                className="chrome-sound"
+                onClick={toggleSound}
+                aria-pressed={soundOn}
+                aria-label={soundOn ? hints.soundOn : hints.soundOff}
+              >
+                <SoundIcon on={soundOn} />
+              </button>
+              <button
+                ref={connectBtn}
+                type="button"
+                className="chrome-connect"
+                aria-expanded={panel === "connect"}
+                aria-controls="connect-panel"
+                onClick={() => setPanel(panel === "connect" ? "none" : "connect")}
+              >
+                <span className="glitch-hover" data-text={site.connectLabel}>
+                  {site.connectLabel}
+                </span>
+                <OutArrow />
+              </button>
+            </div>
 
-        {/* the three ways in: glass cards that scroll to their sections */}
-        <AnimatePresence>
-          {done && (
-            <motion.nav
-              className="cards"
-              data-ui
-              aria-label="Explore"
-              exit={{ opacity: 0, transition: { duration: 0.18 } }}
-            >
-              {intro.cards.map((c) => (
-                <motion.button
-                  key={c.id}
-                  type="button"
-                  className="card"
-                  onClick={() => goTo(c.id)}
-                  {...reveal}
+            <AnimatePresence>
+              {panel === "connect" && (
+                <motion.div
+                  id="connect-panel"
+                  role="dialog"
+                  aria-label={site.connectLabel}
+                  className="panel"
+                  initial={{ opacity: 0, y: -6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeIn" } }}
+                  transition={arrive}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img className="card-img" src={c.image} alt="" draggable={false} />
-                  <span className="card-label">
-                    <Typed full={c.label} shown={c.label.slice(0, cardChars)} k={null} />
-                  </span>
-                  <span className="card-sub">
-                    <Typed
-                      full={c.sub}
-                      shown={c.sub.slice(0, Math.max(0, cardChars - c.label.length))}
-                      k={flipK(`card-${c.id}`)}
-                    />
-                  </span>
-                </motion.button>
-              ))}
-            </motion.nav>
-          )}
-        </AnimatePresence>
+                  <ul>
+                    {contact.map((c) => (
+                      <li key={c.label}>
+                        <a href={c.href} target={c.href.startsWith("http") ? "_blank" : undefined} rel="noreferrer">
+                          <span className="panel-label">{c.label}</span>
+                          <span className="panel-value">{c.href.replace(/^mailto:|^https:\/\/(www\.)?/g, "")}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </header>
 
-        <div className="sr-only" role="status" aria-live="polite">
-          {announce}
-        </div>
-      </section>
-
-      {/* ---------- below the hero, once State 2 is up ---------- */}
-      {phase === "conversation" && (
-        <div className="sections">
-          {sections.map((sec) => (
-            <section key={sec.id} id={sec.id} className="sec" aria-labelledby={`${sec.id}-title`}>
-              <p className="sec-status" aria-hidden>
-                <span className="sec-num">{sec.number}</span>
-                {"> "}
-                {sec.status.replace(/_$/, "")}
-                <span className="caret caret-block" />
-              </p>
-              <h2 id={`${sec.id}-title`} className="sec-title">
-                {sec.title}
-              </h2>
-              <p className="sec-line">{sec.line}</p>
-              <div className="sec-foot">
-                <p className="sec-note">{sec.note}</p>
-                <div className="sec-links">
-                  {sec.links.map((l) => (
-                    <a key={l.href} href={l.href} target="_blank" rel="noreferrer" className="sec-link">
-                      {l.label}
-                      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden>
-                        <path
-                          d="M7 17 17 7M9 7h8v8"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </section>
-          ))}
-
-          <footer className="outro" aria-labelledby="outro-title">
-            <p className="sec-status" aria-hidden>
-              {"> "}
-              {outro.status.replace(/_$/, "")}
-              <span className="caret caret-block" />
-            </p>
-            <h2 id="outro-title" className="sec-title">
-              {outro.title}
-            </h2>
-            <p className="sec-line">{outro.line}</p>
-            <ul className="outro-links">
-              {contact.map((c) => (
-                <li key={c.label}>
-                  <a href={c.href} target={c.href.startsWith("http") ? "_blank" : undefined} rel="noreferrer">
-                    <span className="panel-label">{c.label}</span>
-                    <span className="outro-value">{c.href.replace(/^mailto:|^https:\/\/(www\.)?/g, "")}</span>
-                  </a>
-                </li>
-              ))}
-            </ul>
-            <button type="button" className="outro-top" onClick={() => window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" })}>
-              {outro.top}
-              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden>
-                <path
-                  d="M12 19V5M6.5 10.5 12 5l5.5 5.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+          {/* ---------- State 1 ---------- */}
+          {phase === "idle" && (
+            <button
+              type="button"
+              className="sr-start"
+              onClick={(e) => {
+                byKey.current = e.detail === 0; // detail 0 = keyboard "click"
+                start();
+              }}
+            >
+              Start the conversation
             </button>
-          </footer>
-        </div>
-      )}
+          )}
+
+          {/* ---------- State 2 ---------- */}
+          <AnimatePresence>
+            {talking && (
+              <motion.section
+                className="column"
+                data-ui
+                aria-label="Introduction"
+                initial={{ opacity: 1 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0, transition: { duration: 0.18, ease: "easeIn" } }}
+                onClick={skipLine}
+              >
+                <AnimatePresence mode="wait" initial={false}>
+                  {sec ? (
+                    <motion.div
+                      key={sec.id}
+                      className="section-view"
+                      initial={{ opacity: 0, y: reduced ? 0 : 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                      transition={arrive}
+                    >
+                      <p className="system-line" aria-hidden>
+                        <span className="sec-num">{sec.number}</span>
+                        {"> "}
+                        {sec.status.replace(/_$/, "")}
+                        <span className="caret caret-block" />
+                      </p>
+                      <h2 className="sec-title">{sec.title}</h2>
+                      <p className="sec-line">{sec.line}</p>
+                      <p className="sec-note">{sec.note}</p>
+                      <div className="sec-links">
+                        {sec.links.map((l) => (
+                          <a key={l.href} href={l.href} target="_blank" rel="noreferrer" className="sec-link">
+                            {l.label}
+                            <OutArrow />
+                          </a>
+                        ))}
+                        <button
+                          ref={focusOnMount("back")}
+                          type="button"
+                          className="sec-back"
+                          onClick={(e) => {
+                            byKey.current = e.detail === 0;
+                            setSection(null);
+                          }}
+                          onFocus={glance}
+                        >
+                          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+                            <path
+                              d="M19 12H6M11 6.5 5.5 12 11 17.5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.7"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                          {hints.back}
+                        </button>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="intro"
+                      className="intro"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <p className="system-line" aria-hidden>
+                        {statusText && (
+                          <>
+                            {"> "}
+                            {statusText.replace(/_$/, "")}
+                            {statusText.endsWith("_") && <span className="caret caret-block" />}
+                          </>
+                        )}
+                      </p>
+                      <p className="intro-title" aria-hidden>
+                        <Typed full={intro.lines[0]} shown={textOf(0)} flip={flipOf("line-0")} caret={typedUpTo === 0} />
+                      </p>
+                      <p className="intro-subtitle" aria-hidden>
+                        <Typed full={intro.lines[1]} shown={textOf(1)} flip={flipOf("line-1")} caret={typedUpTo === 1} />
+                      </p>
+                      <div className="intro-body">
+                        {intro.body.map((text, j) => {
+                          const i = intro.lines.length + j;
+                          return (
+                            <p key={j} aria-hidden>
+                              <Typed full={text} shown={textOf(i)} flip={flipOf(`body-${j}`)} caret={typedUpTo === i} />
+                            </p>
+                          );
+                        })}
+                      </div>
+
+                      <div className="cta-row">
+                        {ctaShown && (
+                          <>
+                            <motion.button
+                              ref={focusOnMount("cta")}
+                              type="button"
+                              className="cta-main vox"
+                              onClick={(e) => open(sections[0].id, e)}
+                              onFocus={glance}
+                              {...reveal}
+                            >
+                              {intro.primary}
+                              <Arrow size={20} />
+                            </motion.button>
+                            <motion.button
+                              type="button"
+                              className="restart"
+                              onClick={restart}
+                              onFocus={glance}
+                              aria-label={hints.restart}
+                              {...reveal}
+                            >
+                              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden>
+                                <path
+                                  d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4v4.5H9"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.6"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </motion.button>
+                          </>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.section>
+            )}
+          </AnimatePresence>
+
+          {/* the three ways in: glass cards that open their section */}
+          <AnimatePresence>
+            {ctaShown && (
+              <motion.nav className="cards" data-ui aria-label="Explore" exit={{ opacity: 0, transition: { duration: 0.18 } }}>
+                {intro.cards.map((c) => (
+                  <motion.button
+                    key={c.id}
+                    type="button"
+                    className="card vox"
+                    aria-current={section === c.id ? "true" : undefined}
+                    onClick={(e) => open(c.id, e)}
+                    onFocus={glance}
+                    {...reveal}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img className="card-img" src={c.image} alt="" draggable={false} />
+                    <span className="card-label">
+                      <Typed full={c.label} shown={c.label.slice(0, cardChars)} flip={null} />
+                    </span>
+                    <span className="card-sub">
+                      <Typed
+                        full={c.sub}
+                        shown={c.sub.slice(0, Math.max(0, cardChars - c.label.length))}
+                        flip={flipOf(`card-${c.id}`)}
+                      />
+                    </span>
+                  </motion.button>
+                ))}
+              </motion.nav>
+            )}
+          </AnimatePresence>
+
+          {tune && <Tune />}
+
+          <div className="sr-only" role="status" aria-live="polite">
+            {announce}
+          </div>
+        </section>
       </main>
     </LazyMotion>
   );

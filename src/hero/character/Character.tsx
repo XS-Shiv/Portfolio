@@ -52,6 +52,8 @@ export function Character({ engine, head, led, target, transition, fadeBody, pau
   const [ready3d, setReady3d] = useState(false);
   const el = useRef<HTMLDivElement>(null);
   const [home, setHome] = useState<Box | null>(null);
+  /** ?still: the box alone at 1254px, posed and still, for baking the first-paint image. */
+  const [still, setStill] = useState(false);
 
   // the box's untransformed layout position (its CSS home)
   useLayoutEffect(() => {
@@ -69,7 +71,9 @@ export function Character({ engine, head, led, target, transition, fadeBody, pau
   }, []);
 
   useEffect(() => {
-    const forceStatic = new URLSearchParams(window.location.search).has("nowebgl");
+    const params = new URLSearchParams(window.location.search);
+    const forceStatic = params.has("nowebgl");
+    setStill(params.has("still"));
     // let the photo paint first, then start fetching the 3D bundle
     const id = requestAnimationFrame(() => setMode(!forceStatic && hasWebGL() ? "3d" : "static"));
     return () => cancelAnimationFrame(id);
@@ -98,16 +102,27 @@ export function Character({ engine, head, led, target, transition, fadeBody, pau
       {mode === "3d" && (
         <div
           className="character-canvas"
-          style={{
-            top: `${-CANVAS.top * 100}%`,
-            left: `${-CANVAS.side * 100}%`,
-            right: `${-CANVAS.side * 100}%`,
-            bottom: `${-CANVAS.bottom * 100}%`,
-            opacity: ready3d ? 1 : 0,
-          }}
+          style={
+            still
+              ? { position: "fixed", left: 0, top: 0, width: SRC, height: SRC, zIndex: 99 }
+              : {
+                  top: `${-CANVAS.top * 100}%`,
+                  left: `${-CANVAS.side * 100}%`,
+                  right: `${-CANVAS.side * 100}%`,
+                  bottom: `${-CANVAS.bottom * 100}%`,
+                  opacity: ready3d ? 1 : 0,
+                }
+          }
         >
           {engine && (
-            <Crt3D engine={engine} head={head} led={led} paused={paused} onReady={() => setReady3d(true)} />
+            <Crt3D
+              engine={engine}
+              head={head}
+              led={led}
+              paused={paused}
+              still={still}
+              onReady={() => setReady3d(true)}
+            />
           )}
         </div>
       )}
