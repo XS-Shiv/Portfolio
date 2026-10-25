@@ -17,6 +17,7 @@ export const T = {
   slideDelay: 0, // character starts sliding
   slide: 700, // character slide / scale / turn
   restartSlide: 700,
+  crtExit: 420, // leaving for another page: the screen collapses to a line, then a dot (<= 500)
   firstLineAt: 260, // left column starts typing
 
   // Typing, when there is no voice timing to follow (muted text-only fallback)

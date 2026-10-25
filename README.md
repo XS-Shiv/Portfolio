@@ -51,6 +51,16 @@ The background track is `public/audio/the-mountain.mp3` ("The Mountain", 96 seco
 
 Before anyone clicks, the screen flashes pictures for a few seconds, broadcast in CRT colours with glitches. They are listed in `screen.images` in `src/hero/content.ts`. Put your own photos in `public/screen/` and add their paths there; `pixel:heart`, `pixel:bulb`, `pixel:spark` and `pixel:hi` are built in.
 
+## Work
+
+"View my work" and card 01 go to `/work` (a short CRT exit, then the page). Coming back, with the browser's back button or a link home, lands on State 2 already settled; a fresh visit or a reload starts at State 1.
+
+- Each piece of work is one Markdown file in [`content/work/`](content/work/README.md). Adding a file adds a card and a page at `/work/<slug>`; no component changes.
+- Tabs appear on their own: a tab needs at least two published items (`MIN_ITEMS_PER_TAB`), Featured needs one, and Playground is off (`SHOW_PLAYGROUND`). Tab names, the page's words and these rules are in [`src/work/config.ts`](src/work/config.ts).
+- New items are `status: draft`: they never appear in production. With `npm run dev`, tick "Show drafts" on /work to preview them. A published item may not contain "TODO" (the build fails and names the file).
+- Covers go in `public/work/<slug>/`; until then an item borrows one of the monitor photos.
+- The Work pages scroll, and load no 3D or voice code.
+
 ## Change the timing and the motion
 
 Every duration (nudges, the glitch, the slide, blinks) is in `T`, every head, neck and torso spring and range in `MOTION`, and the cords' thickness and physics in `CABLE`, all in [`src/hero/timings.ts`](src/hero/timings.ts). To tune the motion live, run `npm run dev` and open `http://localhost:3000/?tune`: a panel with a slider for every constant (not part of production builds). `?pose=40,18` holds the head at a fixed yaw and pitch, for checking extremes.
@@ -78,6 +88,8 @@ Add `?nowebgl` to the URL to see the photo fallback that browsers without WebGL 
 | `src/hero/character/physics.ts`, `springs.ts` | The rope and re-bendable tube for the cords; the spring helpers |
 | `src/hero/voice.ts` | Speaks each line and reveals its words in time |
 | `src/hero/sound.ts` | Music, the voice's analyser, mute, and the small effects |
+| `app/work/`, `src/work/` | The /work listing and project pages, the content loader and its rules |
+| `src/site/` | What the Work pages share with the hero: the top bar, the sound preference |
 | `scripts/generate-voice.ts` | Makes the voice clips with Sarvam AI (or `--engine kokoro` offline placeholders) |
 | `src/hero/speech.ts` | How a spoken line splits into phrase clips and pauses (shared by the script and the page) |
 | `scripts/make_plates.py` | Rebuilds `public/character/body.*` from `front.png` (cords painted out) |

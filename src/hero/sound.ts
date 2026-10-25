@@ -10,21 +10,15 @@
  * follow its real loudness (see voice.ts).
  */
 
+import { savedSoundPref, saveSoundPref } from "../site/soundPref";
+
+export { savedSoundPref };
+
 const MUSIC_SRC = "/audio/the-mountain.mp3";
 const MUSIC_LEVEL = 0.5;
 const MUSIC_DUCKED = 0.16; // under the voice
 const FADE_IN = 2.5; // seconds
 const FADE_OUT = 0.9;
-const KEY = "shiv-sound";
-
-export function savedSoundPref(): boolean {
-  try {
-    const v = window.localStorage.getItem(KEY);
-    return v === null ? true : v === "on";
-  } catch {
-    return true;
-  }
-}
 
 export class Sound {
   /** The visitor's choice (on by default). */
@@ -77,11 +71,7 @@ export class Sound {
   /** The speaker button. Also a user gesture, so it may start audio. */
   setEnabled(on: boolean) {
     this.enabled = on;
-    try {
-      window.localStorage.setItem(KEY, on ? "on" : "off");
-    } catch {
-      /* private mode: the choice lasts for this visit */
-    }
+    saveSoundPref(on);
     this.unlocked = true;
     const ac = this.audio();
     if (ac && this.master) {

@@ -15,6 +15,7 @@ export type HeroState = {
 
 export type HeroEvent =
   | { type: "START" }
+  | { type: "SETTLE" }
   | { type: "BOOT_DONE" }
   | { type: "LINE_TYPED" }
   | { type: "FINISH_ALL" }
@@ -33,6 +34,14 @@ export function reducer(state: HeroState, event: HeroEvent): HeroState {
         phase: "booting",
         transcript: [...intro.lines, ...intro.body].map((l) => ({ ...l, id: ++lineId })),
         typedUpTo: 0,
+      };
+    case "SETTLE":
+      // back from /work: State 2 as it was left, already said, no boot
+      if (state.phase !== "idle") return state;
+      return {
+        phase: "conversation",
+        transcript: [...intro.lines, ...intro.body].map((l) => ({ ...l, id: ++lineId })),
+        typedUpTo: intro.lines.length + intro.body.length,
       };
     case "BOOT_DONE":
       return state.phase === "booting" ? { ...state, phase: "conversation" } : state;
