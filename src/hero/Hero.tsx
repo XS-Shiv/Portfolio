@@ -2,7 +2,8 @@
 
 import { AnimatePresence, domAnimation, LazyMotion, m as motion } from "motion/react";
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { Character, type Box } from "./character/Character";
 import { HEAD_CENTER, SRC } from "./character/geometry";
 import { soft } from "./character/springs";
@@ -12,6 +13,7 @@ import { idleBox, isCompact, talkBox } from "./layout";
 import { initialState, ledOf, reducer } from "./machine";
 import { flipAt, flipCount } from "./pronouns";
 import { ScreenEngine } from "./screen/engine";
+import { markLeaving, takeReturn } from "./session";
 import { savedSoundPref, Sound } from "./sound";
 import { EASE, MOTION, T, TAP_SLOP, VOICE } from "./timings";
 import { Narrator, type Speech } from "./voice";
@@ -132,6 +134,21 @@ function OutArrow() {
 
 export default function Hero() {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const router = useRouter();
+  /** Back from /work: State 2 appears already settled; for the first frames nothing animates in. */
+  const [settling, setSettling] = useState(false);
+  const faceOnSettle = useRef(false);
+  useLayoutEffect(() => {
+    if (!takeReturn()) return;
+    faceOnSettle.current = true;
+    setSettling(true);
+    dispatch({ type: "SETTLE" });
+  }, []);
+  useEffect(() => {
+    if (!settling) return;
+    const id = window.setTimeout(() => setSettling(false), 120);
+    return () => clearTimeout(id);
+  }, [settling]);
   const { phase, transcript, typedUpTo } = state;
   const reduced = useMedia("(prefers-reduced-motion: reduce)");
 
@@ -246,6 +263,9 @@ export default function Hero() {
       };
       later(() => engine.popImage(), T.firstPop);
       nudge();
+    } else if (phase === "conversation" && faceOnSettle.current) {
+      faceOnSettle.current = false;
+      engine.showFace();
     } else if (phase === "booting") {
       sound.current?.hum();
       narrator.current?.load();
@@ -351,7 +371,7 @@ export default function Hero() {
       setCardChars(0);
       return;
     }
-    if (reduced) {
+    if (reduced || settling) {
       setCardChars(cardLen);
       return;
     }
@@ -362,6 +382,8 @@ export default function Hero() {
       if (n >= cardLen) clearInterval(id);
     }, T.cardPerChar);
     return () => clearInterval(id);
+    // settling only matters for the first frames; it must not retrigger the typing
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctaShown, reduced, cardLen]);
   const allDone = done && cardChars >= cardLen;
 
@@ -589,6 +611,47 @@ export default function Hero() {
     dispatch({ type: "RESTART" });
   };
 
+  // ---------- leaving for another page: speech stops, the screen collapses like a CRT, then we go ----------
+  const leaving = useRef(false);
+  const leaveTo = (href: string) => {
+    if (leaving.current) return;
+    leaving.current = true;
+    hush();
+    markLeaving();
+    const el = heroEl.current;
+    if (reduced || !el) {
+      router.push(href);
+      return;
+    }
+    // transform and opacity only, so it stays on the compositor even while the 3D renders;
+    // navigation runs on a timer, so the exit never takes longer than T.crtExit
+    // (the browser's own Web Animations API, which motion's mini animate wraps; calling it
+    // directly keeps the hero bundle unchanged)
+    el.animate(
+      [
+        { transform: "scale(1, 1)", opacity: 1, offset: 0 },
+        { transform: "scale(1, 0.006)", opacity: 1, offset: 0.55 },
+        { transform: "scale(1, 0.006)", opacity: 1, offset: 0.7 },
+        { transform: "scale(0, 0.006)", opacity: 0, offset: 1 },
+      ],
+      { duration: T.crtExit, easing: "ease-in", fill: "forwards" },
+    );
+    window.setTimeout(() => router.push(href), T.crtExit);
+  };
+  useEffect(() => {
+    if (ctaShown) router.prefetch(intro.primaryHref);
+  }, [ctaShown, router]);
+  // restored from the back-forward cache mid-exit: undo the collapse
+  useEffect(() => {
+    const show = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      leaving.current = false;
+      heroEl.current?.getAnimations().forEach((a) => a.cancel());
+    };
+    window.addEventListener("pageshow", show);
+    return () => window.removeEventListener("pageshow", show);
+  }, []);
+
   const toggleSound = () => {
     const on = !soundOn;
     setSoundOn(on);
@@ -606,7 +669,7 @@ export default function Hero() {
   const compactTop = talk && talk.columnTop ? `${talk.columnTop}px` : undefined;
   const statusText = phase === "booting" ? status.booting : phase === "conversation" ? status.ready : "";
   const reveal = {
-    initial: { opacity: 0, y: reduced ? 0 : 8 },
+    initial: settling ? (false as const) : { opacity: 0, y: reduced ? 0 : 8 },
     animate: { opacity: 1, y: 0 },
     transition: { ...arrive, duration: reduced ? 0 : 0.35 },
   };
@@ -635,7 +698,7 @@ export default function Hero() {
             transition={{
               duration: phase === "restarting" ? T.restartSlide : T.slide,
               delay: phase === "booting" ? T.slideDelay : 0,
-              instant: reduced,
+              instant: reduced || settling,
             }}
             fadeBody={talking && !!talk?.columnTop}
             paused={paused}
@@ -831,7 +894,7 @@ export default function Hero() {
                               ref={focusOnMount("cta")}
                               type="button"
                               className="cta-main vox"
-                              onClick={(e) => open(sections[0].id, e)}
+                              onClick={() => leaveTo(intro.primaryHref)}
                               onFocus={glance}
                               {...reveal}
                             >
@@ -879,7 +942,7 @@ export default function Hero() {
                     whileHover={reduced ? undefined : { y: -4 }}
                     whileFocus={reduced ? undefined : { y: -4 }}
                     aria-current={section === c.id ? "true" : undefined}
-                    onClick={(e) => open(c.id, e)}
+                    onClick={(e) => (c.href ? leaveTo(c.href) : open(c.id, e))}
                     onFocus={glance}
                     {...reveal}
                   >

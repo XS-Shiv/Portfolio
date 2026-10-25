@@ -26,8 +26,10 @@ export type Link = { label: string; href: string };
 export type Spoken = { text: string; spoken?: string };
 
 export type Card = {
-  /** Also the id of the section it opens. */
+  /** The id of the section it opens in place of the introduction, unless it has an href. */
   id: string;
+  /** A page to go to instead (with the CRT exit). */
+  href?: string;
   number: string;
   label: string;
   sub: string;
@@ -101,9 +103,12 @@ export const intro = {
     },
   ] as Spoken[],
   primary: "View my work",
+  /** Where the main button goes (with the CRT exit). */
+  primaryHref: "/work",
   cards: [
     {
       id: "situation",
+      href: "/work?tab=built-with-ai",
       number: "01",
       label: "The human–machine situation",
       sub: "I build with AI. Now it has started building a case for itself.",
@@ -126,20 +131,8 @@ export const intro = {
   ] as Card[],
 };
 
-/** One section per card, in the same order; opens in place of the introduction. */
+/** Cards without an href open their section in place of the introduction. */
 export const sections: Section[] = [
-  {
-    id: "situation",
-    number: "01",
-    status: "ACCESSING BUILD LOGS_",
-    title: "The human–machine situation",
-    line: "I build with AI. Now it has started building a case for itself.",
-    note: "The build logs are being written up, the machine insists on one more polish",
-    links: [
-      { label: "See the code on GitHub", href: "https://github.com/XS-Shiv" },
-      { label: "Design case studies", href: "https://shivanand.framer.website" },
-    ],
-  },
   {
     id: "behind",
     number: "02",
