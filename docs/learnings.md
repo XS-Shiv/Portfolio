@@ -83,3 +83,15 @@ Web Speech audio cannot be routed through WebAudio, so its loudness cannot be me
 ## Focus after an animated swap
 
 With `AnimatePresence mode="wait"`, a new element mounts only after the old one has left, and on a slow device a timeout is not enough. Focus is moved from the element's ref callback when it mounts.
+
+## Coming back to a settled State 2
+
+Leaving the hero for /work writes a one-use mark to sessionStorage (`src/hero/session.ts`). When the hero mounts and finds it, a `SETTLE` event takes the state machine straight from idle to a finished conversation, and for the first ~120 ms nothing animates in (the character jumps to its State 2 box, the buttons and cards appear without their reveal). The mark is read in a layout effect, so on a client-side back navigation no State 1 frame is ever painted; it is removed on read, so a reload starts at State 1 again. The CRT exit animates only transform and opacity, and navigation runs on a timer rather than on the animation's finish: a full-screen brightness filter, or waiting for `finished`, stretched a 420 ms exit to several seconds while the 3D was rendering.
+
+## Work tabs are computed, not configured
+
+`visibleTabs()` decides which tabs exist from the items in hand (at least two published, Featured at least one, Playground behind a flag), and the same function runs on the server and in the browser, so the dev-only "Show drafts" toggle recomputes tabs over drafts too. The tab and the Design filter live in the URL; tab clicks use `history.pushState`, which Next's `useSearchParams` follows, so back/forward works without a server round trip. Because reading the URL makes a static page bail out to client rendering, the listing is wrapped in Suspense with a prerendered fallback for the default tab.
+
+## Keeping three.js and the voice out of /work
+
+The Work pages import nothing from the hero except plain data (`content.ts`, `timings.ts`) and the sound preference, which moved to `src/site/soundPref.ts` so the toggle never pulls in the audio code. Check with the network tab: no chunk on /work should contain `WebGLRenderer`, and nothing under /voice or /audio is requested. One side effect: `motion` is now shared by two routes, so the bundler moved it into shared chunks, which adds about 9 KB gzipped to the hero's first load even though the hero's own code did not grow.
