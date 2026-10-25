@@ -58,10 +58,14 @@ html[data-font="inter"] {
   }
 }
 
-/* One screen, every state: nothing ever scrolls. */
 html,
 body {
   margin: 0;
+}
+
+/* The hero is one screen in every state: nothing ever scrolls. Other pages scroll normally. */
+html:has(.hero),
+html:has(.hero) body {
   height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
